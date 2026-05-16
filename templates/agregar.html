@@ -1,0 +1,111 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{{ titulo or "Agregar movimiento" }}</title>
+    <link rel="manifest" href="{{ url_for('static', filename='manifest.json') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+  </head>
+  <body>
+    <header class="topbar">
+      <a class="brand" href="{{ url_for('index') }}">Finanzas</a>
+      <nav>
+        <a href="{{ url_for('index') }}">Dashboard</a>
+        <a href="{{ url_for('resumen') }}">Resumen</a>
+        <a href="{{ url_for('historico') }}">Historico</a>
+        <a href="{{ url_for('automatizacion') }}">Gastos fijos</a>
+        <a href="{{ url_for('deudas') }}">Deudas</a>
+        <a href="{{ url_for('agregar_por_tipo', tipo='ingreso') }}">Ingreso</a>
+        <a href="{{ url_for('agregar_por_tipo', tipo='gasto') }}">Gasto</a>
+        <a href="{{ url_for('agregar_por_tipo', tipo='ahorro') }}">Ahorro</a>
+      </nav>
+    </header>
+
+    <main class="container narrow">
+      <section class="panel">
+        <p class="eyebrow">{{ tipo or "Movimiento" }}</p>
+        <h1>{{ titulo or "Agregar movimiento" }}</h1>
+        <form method="post" class="form">
+          {% if tipo %}
+            <input type="hidden" name="tipo" value="{{ tipo }}">
+          {% endif %}
+
+          <label>
+            Fecha
+            <input type="date" name="fecha" value="{{ movimiento.fecha if movimiento else '' }}" required>
+          </label>
+
+          {% if not tipo %}
+            <label>
+              Tipo
+              <select name="tipo" required>
+                {% set tipo_actual = movimiento.tipo if movimiento else 'Gasto' %}
+                <option {{ 'selected' if tipo_actual == 'Gasto' else '' }}>Gasto</option>
+                <option {{ 'selected' if tipo_actual == 'Ingreso' else '' }}>Ingreso</option>
+                <option {{ 'selected' if tipo_actual == 'Ahorro' else '' }}>Ahorro</option>
+              </select>
+            </label>
+          {% endif %}
+
+          <label>
+            Categoria
+            <input
+              type="text"
+              name="categoria"
+              list="{{ lista_categoria_para_tipo(tipo or (movimiento.tipo if movimiento else 'Gasto')) }}"
+              data-category-list
+              value="{{ movimiento.categoria if movimiento else '' }}"
+              placeholder="{{ ayuda_categoria or 'Comida, sueldo, transporte...' }}"
+              required
+            >
+          </label>
+          {% include "_categorias_datalist.html" %}
+
+          <label>
+            Descripcion
+            <input type="text" name="descripcion" value="{{ movimiento.descripcion if movimiento else '' }}" placeholder="Detalle opcional">
+          </label>
+
+          <label>
+            Monto
+            <input type="number" name="monto" min="0" step="0.01" value="{{ movimiento.monto if movimiento else '' }}" required>
+          </label>
+
+          <div class="actions">
+            <a class="link-button" href="{{ volver_a or url_for('index') }}">Cancelar</a>
+            <button type="submit">Guardar</button>
+          </div>
+        </form>
+
+        {% if movimiento %}
+          <form
+            method="post"
+            action="{{ url_for('eliminar', movimiento_id=movimiento.id) }}"
+            class="delete-form"
+            onsubmit="return confirm('¿Eliminar este movimiento?');"
+          >
+            <button type="submit" class="danger-button">Eliminar movimiento</button>
+          </form>
+          {% endif %}
+      </section>
+
+      {% if tipo == "Ingreso" %}
+        <section class="panel section-gap">
+          <p class="eyebrow">Ingreso automatico</p>
+          <h2>Sueldo</h2>
+          <form class="salary-form" method="post" action="{{ url_for('agregar_sueldo') }}">
+            <label>
+              Monto
+              <input type="number" name="monto" min="0" step="0.01" placeholder="Monto" required>
+            </label>
+            <button type="submit">Guardar sueldo</button>
+            <span>Fecha: {{ sueldo_fecha }}</span>
+          </form>
+        </section>
+      {% endif %}
+    </main>
+
+    <script src="{{ url_for('static', filename='app.js') }}"></script>
+  </body>
+</html>

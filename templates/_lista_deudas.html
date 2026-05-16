@@ -1,0 +1,20 @@
+{% if items %}
+  <div class="automation-list">
+    {% for item in items %}
+      <form class="debt-item" method="post" action="{{ url_for('pagar_deuda', deuda_id=item.id) }}">
+        <div>
+          <strong>{{ item.persona }}</strong>
+          <span>{{ item.categoria }} · {{ item.fecha }} · {{ item.descripcion or "Sin descripcion" }}</span>
+          <b class="{{ 'positive' if item.tipo == 'Me deben' else 'negative' }}">{{ item.monto|moneda }}</b>
+        </div>
+        <label>
+          Fecha de pago
+          <input type="date" name="fecha_pago">
+        </label>
+        <button type="submit">Marcar pagada</button>
+      </form>
+    {% endfor %}
+  </div>
+{% else %}
+  <p class="empty">{{ empty }}</p>
+{% endif %}

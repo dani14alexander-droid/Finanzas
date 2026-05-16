@@ -1,0 +1,30 @@
+<datalist id="categorias-ingreso">
+  {% for categoria in categorias_existentes["Ingreso"] %}
+    <option value="{{ categoria }}"></option>
+  {% endfor %}
+</datalist>
+<datalist id="categorias-gasto">
+  {% for categoria in categorias_existentes["Gasto"] %}
+    <option value="{{ categoria }}"></option>
+  {% endfor %}
+</datalist>
+<datalist id="categorias-ahorro">
+  {% for categoria in categorias_existentes["Ahorro"] %}
+    <option value="{{ categoria }}"></option>
+  {% endfor %}
+</datalist>
+<datalist id="categorias-me-deben">
+  {% for categoria in categorias_existentes["Me deben"] %}
+    <option value="{{ categoria }}"></option>
+  {% endfor %}
+</datalist>
+<datalist id="categorias-debo">
+  {% for categoria in categorias_existentes["Debo"] %}
+    <option value="{{ categoria }}"></option>
+  {% endfor %}
+</datalist>
+<datalist id="categorias-todas">
+  {% for categoria in categorias_existentes["Todas"] %}
+    <option value="{{ categoria }}"></option>
+  {% endfor %}
+</datalist>

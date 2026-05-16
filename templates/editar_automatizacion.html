@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Editar gasto fijo</title>
+    <link rel="manifest" href="{{ url_for('static', filename='manifest.json') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+  </head>
+  <body>
+    <header class="topbar">
+      <a class="brand" href="{{ url_for('index') }}">Finanzas</a>
+      <nav>
+        <a href="{{ url_for('index') }}">Dashboard</a>
+        <a href="{{ url_for('resumen') }}">Resumen</a>
+        <a href="{{ url_for('historico') }}">Historico</a>
+        <a href="{{ url_for('automatizacion') }}">Gastos fijos</a>
+        <a href="{{ url_for('deudas') }}">Deudas</a>
+      </nav>
+    </header>
+
+    <main class="container narrow">
+      <section class="panel">
+        <p class="eyebrow">Gastos fijos</p>
+        <h1>Editar gasto fijo</h1>
+        <form method="post" class="form">
+          <label>
+            Tipo
+            <select name="tipo" required>
+              <option {{ 'selected' if item.tipo == 'Gasto' else '' }}>Gasto</option>
+              <option {{ 'selected' if item.tipo == 'Ahorro' else '' }}>Ahorro</option>
+            </select>
+          </label>
+
+          <label>
+            Categoria
+            <input type="text" name="categoria" list="{{ lista_categoria_para_tipo(item.tipo) }}" data-category-list value="{{ item.categoria }}" required>
+          </label>
+          {% include "_categorias_datalist.html" %}
+
+          <label>
+            Descripcion
+            <input type="text" name="descripcion" value="{{ item.descripcion }}">
+          </label>
+
+          <label>
+            Monto mensual
+            <input type="number" name="monto" min="0" step="0.01" value="{{ item.monto }}" required>
+          </label>
+
+          <label>
+            Dia del mes
+            <input type="number" name="dia_mes" min="1" max="31" value="{{ item.dia_mes }}" required>
+          </label>
+
+          <div class="actions">
+            <a class="link-button" href="{{ url_for('automatizacion') }}">Cancelar</a>
+            <button type="submit">Guardar cambios</button>
+          </div>
+        </form>
+
+        <form
+          method="post"
+          action="{{ url_for('eliminar_automatizacion', automatizacion_id=item.id) }}"
+          class="delete-form"
+          onsubmit="return confirm('¿Eliminar este gasto fijo?');"
+        >
+          <button type="submit" class="danger-button">Eliminar gasto fijo</button>
+        </form>
+      </section>
+    </main>
+
+    <script src="{{ url_for('static', filename='app.js') }}"></script>
+  </body>
+</html>

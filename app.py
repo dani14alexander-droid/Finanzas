@@ -1,0 +1,1267 @@
+from pathlib import Path
+from datetime import date, datetime, timedelta
+from math import ceil
+import math
+import calendar
+import csv
+import json
+
+from flask import Flask, Response, redirect, render_template, request, url_for
+
+
+app = Flask(__name__)
+
+BASE_DIR = Path(__file__).resolve().parent
+DATA_DIR = BASE_DIR / "data"
+CSV_PATH = DATA_DIR / "finanzas.csv"
+AUTOMATIZACIONES_PATH = DATA_DIR / "automatizaciones.csv"
+DEUDAS_PATH = DATA_DIR / "deudas.csv"
+COLUMNAS = ["fecha", "tipo", "categoria", "descripcion", "monto"]
+AUTOMATIZACION_COLUMNAS = [
+    "tipo",
+    "categoria",
+    "descripcion",
+    "monto",
+    "dia_mes",
+    "activo",
+    "ultimo_confirmado",
+    "ticket_ultimo",
+    "ultimo_anulado",
+    "razon_anulado",
+]
+DEUDA_COLUMNAS = [
+    "fecha",
+    "tipo",
+    "persona",
+    "categoria",
+    "descripcion",
+    "monto",
+    "estado",
+    "fecha_pago",
+]
+TIPOS_VALIDOS = {"Ingreso", "Gasto", "Ahorro"}
+TIPOS_AUTOMATIZACION = {"Gasto", "Ahorro"}
+TIPOS_DEUDA = {"Me deben", "Debo"}
+
+
+def asegurar_csv():
+    DATA_DIR.mkdir(exist_ok=True)
+    if not CSV_PATH.exists():
+        with CSV_PATH.open("w", newline="", encoding="utf-8") as archivo:
+            writer = csv.DictWriter(archivo, fieldnames=COLUMNAS)
+            writer.writeheader()
+    if not AUTOMATIZACIONES_PATH.exists():
+        with AUTOMATIZACIONES_PATH.open("w", newline="", encoding="utf-8") as archivo:
+            writer = csv.DictWriter(archivo, fieldnames=AUTOMATIZACION_COLUMNAS)
+            writer.writeheader()
+    if not DEUDAS_PATH.exists():
+        with DEUDAS_PATH.open("w", newline="", encoding="utf-8") as archivo:
+            writer = csv.DictWriter(archivo, fieldnames=DEUDA_COLUMNAS)
+            writer.writeheader()
+
+
+def leer_movimientos():
+    asegurar_csv()
+    with CSV_PATH.open(newline="", encoding="utf-8") as archivo:
+        reader = csv.DictReader(archivo)
+        movimientos = []
+        for indice, fila in enumerate(reader):
+            movimiento = {columna: fila.get(columna, "") for columna in COLUMNAS}
+            try:
+                movimiento["monto"] = float(movimiento["monto"] or 0)
+            except ValueError:
+                movimiento["monto"] = 0
+            movimiento["id"] = indice
+            movimientos.append(movimiento)
+    return movimientos
+
+
+def escribir_movimientos(movimientos):
+    asegurar_csv()
+    with CSV_PATH.open("w", newline="", encoding="utf-8") as archivo:
+        writer = csv.DictWriter(archivo, fieldnames=COLUMNAS)
+        writer.writeheader()
+        for movimiento in movimientos:
+            writer.writerow({columna: movimiento.get(columna, "") for columna in COLUMNAS})
+
+
+def guardar_movimiento(movimiento):
+    asegurar_csv()
+    with CSV_PATH.open("a", newline="", encoding="utf-8") as archivo:
+        writer = csv.DictWriter(archivo, fieldnames=COLUMNAS)
+        writer.writerow(movimiento)
+
+
+def leer_automatizaciones():
+    asegurar_csv()
+    with AUTOMATIZACIONES_PATH.open(newline="", encoding="utf-8") as archivo:
+        reader = csv.DictReader(archivo)
+        automatizaciones = []
+        for indice, fila in enumerate(reader):
+            item = {columna: fila.get(columna, "") for columna in AUTOMATIZACION_COLUMNAS}
+            try:
+                item["monto"] = float(item["monto"] or 0)
+            except ValueError:
+                item["monto"] = 0
+            try:
+                item["dia_mes"] = int(item["dia_mes"] or 1)
+            except ValueError:
+                item["dia_mes"] = 1
+            item["id"] = indice
+            item["activo"] = item["activo"] != "No"
+            automatizaciones.append(item)
+    return automatizaciones
+
+
+def escribir_automatizaciones(automatizaciones):
+    asegurar_csv()
+    with AUTOMATIZACIONES_PATH.open("w", newline="", encoding="utf-8") as archivo:
+        writer = csv.DictWriter(archivo, fieldnames=AUTOMATIZACION_COLUMNAS)
+        writer.writeheader()
+        for item in automatizaciones:
+            fila = {columna: item.get(columna, "") for columna in AUTOMATIZACION_COLUMNAS}
+            fila["activo"] = "Si" if item.get("activo", True) else "No"
+            writer.writerow(fila)
+
+
+def leer_deudas():
+    asegurar_csv()
+    with DEUDAS_PATH.open(newline="", encoding="utf-8") as archivo:
+        reader = csv.DictReader(archivo)
+        deudas = []
+        for indice, fila in enumerate(reader):
+            item = {columna: fila.get(columna, "") for columna in DEUDA_COLUMNAS}
+            try:
+                item["monto"] = float(item["monto"] or 0)
+            except ValueError:
+                item["monto"] = 0
+            item["id"] = indice
+            deudas.append(item)
+    return deudas
+
+
+def categorias_existentes():
+    categorias = {"Todas": {}}
+    tipos = TIPOS_VALIDOS | TIPOS_AUTOMATIZACION | TIPOS_DEUDA
+    for tipo in tipos:
+        categorias[tipo] = {}
+
+    def agregar_categoria(tipo, categoria):
+        categoria = categoria.strip()
+        if not categoria:
+            return
+        categorias.setdefault(tipo, {})
+        categorias[tipo].setdefault(categoria.lower(), categoria)
+        categorias["Todas"].setdefault(categoria.lower(), categoria)
+
+    for item in leer_movimientos():
+        agregar_categoria(item.get("tipo", ""), item.get("categoria", ""))
+    for item in leer_automatizaciones():
+        agregar_categoria(item.get("tipo", ""), item.get("categoria", ""))
+    for item in leer_deudas():
+        agregar_categoria(item.get("tipo", ""), item.get("categoria", ""))
+
+    return {
+        tipo: sorted(valores.values(), key=str.lower)
+        for tipo, valores in categorias.items()
+    }
+
+
+def lista_categoria_para_tipo(tipo):
+    ids = {
+        "Ingreso": "categorias-ingreso",
+        "Gasto": "categorias-gasto",
+        "Ahorro": "categorias-ahorro",
+        "Me deben": "categorias-me-deben",
+        "Debo": "categorias-debo",
+    }
+    return ids.get(tipo, "categorias-todas")
+
+
+@app.context_processor
+def inyectar_categorias():
+    return {
+        "categorias_existentes": categorias_existentes(),
+        "lista_categoria_para_tipo": lista_categoria_para_tipo,
+    }
+def escribir_deudas(deudas):
+    asegurar_csv()
+    with DEUDAS_PATH.open("w", newline="", encoding="utf-8") as archivo:
+        writer = csv.DictWriter(archivo, fieldnames=DEUDA_COLUMNAS)
+        writer.writeheader()
+        for item in deudas:
+            writer.writerow({columna: item.get(columna, "") for columna in DEUDA_COLUMNAS})
+
+
+def periodo_actual():
+    hoy = date.today()
+    return f"{hoy.year}-{hoy.month:02d}"
+
+
+def proxima_fecha_mensual(dia_mes):
+    hoy = date.today()
+    ultimo_dia = calendar.monthrange(hoy.year, hoy.month)[1]
+    dia = min(max(int(dia_mes), 1), ultimo_dia)
+    return date(hoy.year, hoy.month, dia).isoformat()
+
+
+def penultimo_dia_habil_mes(hoy=None):
+    hoy = hoy or date.today()
+    ultimo_dia = calendar.monthrange(hoy.year, hoy.month)[1]
+    dias_habiles = [
+        date(hoy.year, hoy.month, dia)
+        for dia in range(1, ultimo_dia + 1)
+        if date(hoy.year, hoy.month, dia).weekday() < 5
+    ]
+    if len(dias_habiles) >= 2:
+        return dias_habiles[-2].isoformat()
+    return dias_habiles[-1].isoformat()
+
+
+def sumar_meses(fecha, meses):
+    mes = fecha.month - 1 + meses
+    anio = fecha.year + mes // 12
+    mes = mes % 12 + 1
+    dia = min(fecha.day, calendar.monthrange(anio, mes)[1])
+    return date(anio, mes, dia)
+
+
+def es_sueldo(movimiento):
+    if movimiento["tipo"] != "Ingreso":
+        return False
+    categoria = movimiento["categoria"].strip().lower()
+    descripcion = movimiento["descripcion"].strip().lower()
+    return categoria == "sueldo" or descripcion == "sueldo"
+
+
+def ultimo_sueldo(movimientos):
+    sueldos = [
+        (fecha, item)
+        for item in movimientos
+        if es_sueldo(item) and (fecha := fecha_movimiento(item["fecha"]))
+    ]
+    if not sueldos:
+        return None
+    return max(sueldos, key=lambda item: item[0])
+
+
+def moneda(valor):
+    return f"${valor:,.0f}".replace(",", ".")
+
+
+app.jinja_env.filters["moneda"] = moneda
+
+
+def tooltip_operaciones(items, titulo):
+    if not items:
+        return f"{titulo}: {moneda(0)}"
+    total = sum(item["monto"] for item in items)
+    lineas = [f"{titulo}: {moneda(total)}"]
+    for item in items[:6]:
+        nombre = item.get("descripcion") or item.get("categoria") or item.get("persona") or "Sin detalle"
+        lineas.append(f"{item.get('fecha', '')} · {nombre}: {moneda(item['monto'])}")
+    if len(items) > 6:
+        lineas.append(f"+{len(items) - 6} mas")
+    return "\n".join(lineas)
+
+
+app.jinja_env.filters["tooltip_operaciones"] = tooltip_operaciones
+
+
+def operaciones_json(items, titulo):
+    total = sum(item["monto"] for item in items)
+    return json.dumps(
+        {
+            "titulo": titulo,
+            "total": moneda(total),
+            "items": [
+                {
+                    "fecha": item.get("fecha", ""),
+                    "nombre": item.get("descripcion")
+                    or item.get("categoria")
+                    or item.get("persona")
+                    or "Sin detalle",
+                    "monto": moneda(item["monto"]),
+                }
+                for item in items
+            ],
+        },
+        ensure_ascii=False,
+    )
+
+
+app.jinja_env.filters["operaciones_json"] = operaciones_json
+
+
+def color_categoria(indice):
+    colores = [
+        "#1f6feb",
+        "#c2410c",
+        "#15803d",
+        "#7c3aed",
+        "#b45309",
+        "#0f766e",
+        "#be123c",
+        "#4338ca",
+    ]
+    return colores[indice % len(colores)]
+
+
+def preparar_segmentos(items):
+    total = sum(item["monto"] for item in items)
+    inicio = 0
+    segmentos = []
+    for indice, item in enumerate(items):
+        porcentaje = item["monto"] / total * 100 if total else 0
+        fin = inicio + porcentaje
+        item["color"] = item.get("color") or color_categoria(indice)
+        item["porcentaje"] = porcentaje
+        item["offset"] = -inicio
+        angulo = (inicio + porcentaje / 2) / 100 * 360 - 90
+        radio = 37
+        item["label_x"] = 60 + radio * math.cos(math.radians(angulo))
+        item["label_y"] = 60 + radio * math.sin(math.radians(angulo))
+        item["mostrar_label"] = porcentaje >= 7
+        segmentos.append(f"{item['color']} {inicio:.2f}% {fin:.2f}%")
+        inicio = fin
+    return items, ", ".join(segmentos) if segmentos else "#e5e7eb 0% 100%", total
+
+
+def calcular_semanas_restantes(hoy=None, fecha_fin=None):
+    hoy = hoy or date.today()
+    if fecha_fin is None:
+        ultimo_dia = calendar.monthrange(hoy.year, hoy.month)[1]
+        fecha_fin = date(hoy.year, hoy.month, ultimo_dia)
+    dias_restantes = max((fecha_fin - hoy).days + 1, 1)
+    semanas = max(1, ceil(dias_restantes / 7))
+    return semanas, dias_restantes, hoy
+
+
+def rango_dashboard(hoy=None, movimientos=None):
+    hoy = hoy or date.today()
+    movimientos = movimientos or []
+    sueldo = ultimo_sueldo(movimientos)
+    if sueldo:
+        inicio = sueldo[0]
+        proximo_mes = sumar_meses(inicio, 1)
+        proximo_sueldo = fecha_movimiento(penultimo_dia_habil_mes(proximo_mes))
+        fin = proximo_sueldo - timedelta(days=1)
+        return inicio, fin
+
+    inicio_mes = date(hoy.year, hoy.month, 1)
+    inicio = inicio_mes - timedelta(days=7)
+    ultimo_dia = calendar.monthrange(hoy.year, hoy.month)[1]
+    fin = date(hoy.year, hoy.month, ultimo_dia)
+    return inicio, fin
+
+
+def fecha_movimiento(valor):
+    try:
+        return datetime.strptime(valor, "%Y-%m-%d").date()
+    except ValueError:
+        return None
+
+
+def periodo_movimiento(valor):
+    fecha = fecha_movimiento(valor)
+    if not fecha:
+        return ""
+    return f"{fecha.year}-{fecha.month:02d}"
+
+
+def descripcion_automatizacion(item):
+    return item["descripcion"] or item["categoria"]
+
+
+def mismo_texto(valor, otro):
+    return (valor or "").strip().lower() == (otro or "").strip().lower()
+
+
+def movimiento_coincide_automatizacion(movimiento, automatizacion):
+    descripcion = automatizacion.get("descripcion", "").strip()
+    descripcion_coincide = (
+        not descripcion
+        or mismo_texto(movimiento.get("descripcion"), descripcion_automatizacion(automatizacion))
+    )
+    return (
+        movimiento.get("tipo") == automatizacion.get("tipo")
+        and mismo_texto(movimiento.get("categoria"), automatizacion.get("categoria"))
+        and descripcion_coincide
+        and abs(float(movimiento.get("monto") or 0) - float(automatizacion.get("monto") or 0)) < 0.01
+    )
+
+
+def actualizar_automatizaciones_por_movimiento(movimiento, movimientos_actuales):
+    periodo = periodo_movimiento(movimiento.get("fecha", ""))
+    if not periodo:
+        return
+
+    automatizaciones = leer_automatizaciones()
+    hubo_cambios = False
+    for item in automatizaciones:
+        if item.get("ultimo_confirmado") != periodo:
+            continue
+        if not movimiento_coincide_automatizacion(movimiento, item):
+            continue
+        existe_movimiento = any(
+            periodo_movimiento(actual.get("fecha", "")) == periodo
+            and movimiento_coincide_automatizacion(actual, item)
+            for actual in movimientos_actuales
+        )
+        if not existe_movimiento:
+            item["ultimo_confirmado"] = ""
+            item["ticket_ultimo"] = ""
+            hubo_cambios = True
+
+    if hubo_cambios:
+        escribir_automatizaciones(automatizaciones)
+
+
+def sincronizar_automatizaciones_confirmadas():
+    automatizaciones = leer_automatizaciones()
+    movimientos = leer_movimientos()
+    hubo_cambios = False
+
+    for item in automatizaciones:
+        periodo = item.get("ultimo_confirmado", "")
+        if not periodo:
+            continue
+        existe_movimiento = any(
+            periodo_movimiento(movimiento.get("fecha", "")) == periodo
+            and movimiento_coincide_automatizacion(movimiento, item)
+            for movimiento in movimientos
+        )
+        if not existe_movimiento:
+            item["ultimo_confirmado"] = ""
+            item["ticket_ultimo"] = ""
+            hubo_cambios = True
+
+    if hubo_cambios:
+        escribir_automatizaciones(automatizaciones)
+
+    return automatizaciones
+
+
+def esta_anulada(item, periodo=None):
+    periodo = periodo or periodo_actual()
+    return item.get("ultimo_anulado") == periodo
+
+
+def clave_periodo(fecha, vista):
+    if vista == "diaria":
+        return fecha.isoformat()
+    if vista == "semanal":
+        anio, semana, _ = fecha.isocalendar()
+        return f"{anio}-S{semana:02d}"
+    return f"{fecha.year}-{fecha.month:02d}"
+
+
+def etiqueta_periodo(fecha, vista):
+    if vista == "diaria":
+        return fecha.strftime("%d-%m")
+    if vista == "semanal":
+        return f"S{fecha.isocalendar().week:02d}"
+    return fecha.strftime("%m")
+
+
+def rango_historico(vista, fechas):
+    if vista == "diaria":
+        fin = max(fechas)
+        ventana_inicio = fin - timedelta(days=30)
+        fechas_relevantes = [fecha for fecha in fechas if ventana_inicio <= fecha <= fin]
+        inicio = min(fechas_relevantes) if fechas_relevantes else ventana_inicio
+        return inicio, fin
+    if vista == "semanal":
+        fin = max(fechas)
+        fin = fin - timedelta(days=fin.weekday())
+        ventana_inicio = fin - timedelta(weeks=11)
+        fechas_relevantes = [fecha for fecha in fechas if ventana_inicio <= fecha <= fin]
+        primer_dato = min(fechas_relevantes) if fechas_relevantes else ventana_inicio
+        inicio_datos = primer_dato - timedelta(days=primer_dato.weekday())
+        inicio = max(inicio_datos, ventana_inicio)
+        return inicio, fin
+    fin = max(fechas)
+    fin = date(fin.year, fin.month, 1)
+    mes = fin.month - 11
+    anio = fin.year
+    while mes <= 0:
+        mes += 12
+        anio -= 1
+    ventana_inicio = date(anio, mes, 1)
+    fechas_relevantes = [fecha for fecha in fechas if ventana_inicio <= fecha <= fin]
+    primer_dato = min(fechas_relevantes) if fechas_relevantes else ventana_inicio
+    inicio_datos = date(primer_dato.year, primer_dato.month, 1)
+    inicio = max(inicio_datos, ventana_inicio)
+    return inicio, fin
+
+
+def marcas_eje_y(maximo):
+    if maximo <= 0:
+        return [0]
+    return [maximo * paso / 4 for paso in range(4, -1, -1)]
+
+
+def construir_periodos(vista, fechas):
+    periodos = {}
+    if not fechas:
+        return {}
+
+    def nuevo_periodo(fecha):
+        clave = clave_periodo(fecha, vista)
+        periodos.setdefault(
+            clave,
+            {
+                "periodo": clave,
+                "etiqueta": etiqueta_periodo(fecha, vista),
+                "ingresos": 0,
+                "gastos": 0,
+                "ahorros": 0,
+                "me_deben": 0,
+                "debo": 0,
+                "balance": 0,
+                "detalle_ingresos": [],
+                "detalle_gastos": [],
+                "detalle_ahorros": [],
+                "detalle_me_deben": [],
+                "detalle_debo": [],
+            },
+        )
+
+    inicio, fin = rango_historico(vista, fechas)
+    if vista == "diaria":
+        actual = inicio
+        while actual <= fin:
+            nuevo_periodo(actual)
+            actual += timedelta(days=1)
+    elif vista == "semanal":
+        actual = inicio - timedelta(days=inicio.weekday())
+        while actual <= fin:
+            nuevo_periodo(actual)
+            actual += timedelta(days=7)
+    else:
+        actual = date(inicio.year, inicio.month, 1)
+        while actual <= fin:
+            nuevo_periodo(actual)
+            if actual.month == 12:
+                actual = date(actual.year + 1, 1, 1)
+            else:
+                actual = date(actual.year, actual.month + 1, 1)
+
+    return periodos
+
+
+def resumen_historico(vista):
+    movimientos = leer_movimientos()
+    deudas_lista = leer_deudas()
+    fechas_movimientos = []
+    fechas_deudas = []
+
+    for item in movimientos:
+        fecha = fecha_movimiento(item["fecha"])
+        if fecha:
+            fechas_movimientos.append(fecha)
+    for item in deudas_lista:
+        fecha = fecha_movimiento(item["fecha"])
+        if fecha:
+            fechas_deudas.append(fecha)
+
+    periodos = construir_periodos(vista, fechas_movimientos)
+    periodos_deudas = construir_periodos(vista, fechas_deudas)
+
+    for item in movimientos:
+        fecha = fecha_movimiento(item["fecha"])
+        if not fecha:
+            continue
+        clave = clave_periodo(fecha, vista)
+        if clave not in periodos:
+            continue
+        periodo = periodos[clave]
+        if item["tipo"] == "Ingreso":
+            periodo["ingresos"] += item["monto"]
+            periodo["detalle_ingresos"].append(item)
+        elif item["tipo"] == "Gasto":
+            periodo["gastos"] += item["monto"]
+            periodo["detalle_gastos"].append(item)
+        elif item["tipo"] == "Ahorro":
+            periodo["ahorros"] += item["monto"]
+            periodo["detalle_ahorros"].append(item)
+
+    for item in deudas_lista:
+        fecha = fecha_movimiento(item["fecha"])
+        if not fecha:
+            continue
+        clave = clave_periodo(fecha, vista)
+        if clave not in periodos_deudas:
+            continue
+        periodo = periodos_deudas[clave]
+        if item["tipo"] == "Me deben":
+            periodo["me_deben"] += item["monto"]
+            periodo["detalle_me_deben"].append(item)
+        elif item["tipo"] == "Debo":
+            periodo["debo"] += item["monto"]
+            periodo["detalle_debo"].append(item)
+
+    filas = [periodos[clave] for clave in sorted(periodos)]
+    filas_deudas = [periodos_deudas[clave] for clave in sorted(periodos_deudas)]
+    for fila in filas:
+        fila["balance"] = fila["ingresos"] - fila["gastos"] - fila["ahorros"]
+    for fila in filas_deudas:
+        fila["balance"] = fila["me_deben"] - fila["debo"]
+
+    maximo = max(
+        [
+            valor
+            for fila in filas
+            for valor in [
+                fila["ingresos"],
+                fila["gastos"],
+                fila["ahorros"],
+                fila["me_deben"],
+                fila["debo"],
+            ]
+        ]
+        or [1]
+    )
+    maximo_deudas = max(
+        [valor for fila in filas_deudas for valor in [fila["me_deben"], fila["debo"]]]
+        or [1]
+    )
+    return filas, maximo, marcas_eje_y(maximo), filas_deudas, maximo_deudas, marcas_eje_y(maximo_deudas)
+
+
+def calcular_dashboard(filtrar_periodo=False):
+    hoy = date.today()
+    movimientos = leer_movimientos()
+    periodo_inicio = None
+    periodo_fin = None
+    if filtrar_periodo:
+        periodo_inicio, periodo_fin = rango_dashboard(hoy, movimientos)
+        movimientos = [
+            item
+            for item in movimientos
+            if (fecha := fecha_movimiento(item["fecha"]))
+            and periodo_inicio <= fecha <= periodo_fin
+        ]
+    semanas, dias_restantes, hoy = calcular_semanas_restantes(hoy, periodo_fin)
+    movimientos = sorted(movimientos, key=lambda item: item["fecha"], reverse=True)
+    ingresos_lista = [item for item in movimientos if item["tipo"] == "Ingreso"]
+    gastos_lista = [item for item in movimientos if item["tipo"] == "Gasto"]
+    ahorros_lista = [item for item in movimientos if item["tipo"] == "Ahorro"]
+    ingresos = sum(item["monto"] for item in ingresos_lista)
+    gastos = sum(item["monto"] for item in gastos_lista)
+    ahorros = sum(item["monto"] for item in ahorros_lista)
+    disponible = ingresos - gastos - ahorros
+    cuota_semanal = disponible / semanas if semanas > 0 else 0
+    return {
+        "movimientos": movimientos,
+        "ingresos_lista": ingresos_lista,
+        "gastos_lista": gastos_lista,
+        "ahorros_lista": ahorros_lista,
+        "ingresos": ingresos,
+        "gastos": gastos,
+        "ahorros": ahorros,
+        "balance": ingresos - gastos,
+        "disponible": disponible,
+        "semanas": semanas,
+        "dias_restantes": dias_restantes,
+        "fecha_calculo": hoy,
+        "periodo_inicio": periodo_inicio,
+        "periodo_fin": periodo_fin,
+        "cuota_semanal": cuota_semanal,
+    }
+
+
+@app.route("/")
+def index():
+    return render_template("index.html", **calcular_dashboard(filtrar_periodo=True))
+
+
+@app.route("/agregar", methods=["GET", "POST"])
+def agregar():
+    if request.method == "POST":
+        movimiento = {
+            "fecha": request.form.get("fecha", ""),
+            "tipo": request.form.get("tipo", "Gasto")
+            if request.form.get("tipo", "Gasto") in TIPOS_VALIDOS
+            else "Gasto",
+            "categoria": request.form.get("categoria", "").strip(),
+            "descripcion": request.form.get("descripcion", "").strip(),
+            "monto": float(request.form.get("monto", 0) or 0),
+        }
+        guardar_movimiento(movimiento)
+        return redirect(url_for("index"))
+
+    return render_template("agregar.html")
+
+
+@app.route("/agregar/<tipo>", methods=["GET", "POST"])
+def agregar_por_tipo(tipo):
+    tipos = {
+        "ingreso": ("Ingreso", "Agregar ingreso", "Sueldo, venta, bono..."),
+        "gasto": ("Gasto", "Agregar gasto", "Comida, transporte, arriendo..."),
+        "ahorro": ("Ahorro", "Agregar ahorro", "Emergencia, viaje, inversion..."),
+    }
+    if tipo not in tipos:
+        return redirect(url_for("agregar"))
+
+    tipo_movimiento, titulo, ayuda_categoria = tipos[tipo]
+    if request.method == "POST":
+        movimiento = {
+            "fecha": request.form.get("fecha", ""),
+            "tipo": tipo_movimiento,
+            "categoria": request.form.get("categoria", "").strip(),
+            "descripcion": request.form.get("descripcion", "").strip(),
+            "monto": float(request.form.get("monto", 0) or 0),
+        }
+        guardar_movimiento(movimiento)
+        return redirect(url_for("index"))
+
+    return render_template(
+        "agregar.html",
+        tipo=tipo_movimiento,
+        titulo=titulo,
+        ayuda_categoria=ayuda_categoria,
+        sueldo_fecha=penultimo_dia_habil_mes() if tipo_movimiento == "Ingreso" else "",
+    )
+
+
+@app.route("/agregar/sueldo", methods=["POST"])
+def agregar_sueldo():
+    guardar_movimiento(
+        {
+            "fecha": penultimo_dia_habil_mes(),
+            "tipo": "Ingreso",
+            "categoria": "Sueldo",
+            "descripcion": "Sueldo",
+            "monto": float(request.form.get("monto", 0) or 0),
+        }
+    )
+    return redirect(url_for("index"))
+
+
+@app.route("/editar/<int:movimiento_id>", methods=["GET", "POST"])
+def editar(movimiento_id):
+    movimientos = leer_movimientos()
+    if movimiento_id < 0 or movimiento_id >= len(movimientos):
+        return redirect(url_for("resumen"))
+
+    movimiento = movimientos[movimiento_id]
+    if request.method == "POST":
+        tipo = request.form.get("tipo", movimiento["tipo"])
+        movimiento_anterior = movimiento.copy()
+        movimientos[movimiento_id] = {
+            "fecha": request.form.get("fecha", ""),
+            "tipo": tipo if tipo in TIPOS_VALIDOS else movimiento["tipo"],
+            "categoria": request.form.get("categoria", "").strip(),
+            "descripcion": request.form.get("descripcion", "").strip(),
+            "monto": float(request.form.get("monto", 0) or 0),
+        }
+        escribir_movimientos(movimientos)
+        actualizar_automatizaciones_por_movimiento(movimiento_anterior, movimientos)
+        return redirect(url_for("resumen"))
+
+    return render_template(
+        "agregar.html",
+        titulo="Editar movimiento",
+        tipo=None,
+        movimiento=movimiento,
+        ayuda_categoria="Categoria del movimiento",
+        volver_a=url_for("resumen"),
+    )
+
+
+@app.route("/eliminar/<int:movimiento_id>", methods=["POST"])
+def eliminar(movimiento_id):
+    movimientos = leer_movimientos()
+    if 0 <= movimiento_id < len(movimientos):
+        movimiento_eliminado = movimientos.pop(movimiento_id)
+        escribir_movimientos(movimientos)
+        actualizar_automatizaciones_por_movimiento(movimiento_eliminado, movimientos)
+    return redirect(url_for("resumen"))
+
+
+@app.route("/resumen/agregar", methods=["POST"])
+def agregar_desde_resumen():
+    tipo = request.form.get("tipo", "Gasto")
+    if tipo not in TIPOS_VALIDOS:
+        tipo = "Gasto"
+    guardar_movimiento(
+        {
+            "fecha": request.form.get("fecha", ""),
+            "tipo": tipo,
+            "categoria": request.form.get("categoria", "").strip(),
+            "descripcion": request.form.get("descripcion", "").strip(),
+            "monto": float(request.form.get("monto", 0) or 0),
+        }
+    )
+    return redirect(f"{url_for('resumen')}#movimientos")
+
+
+@app.route("/gastos-fijos", methods=["GET", "POST"])
+@app.route("/automatizacion", methods=["GET", "POST"])
+def automatizacion():
+    if request.method == "POST":
+        tipo = request.form.get("tipo", "Gasto")
+        if tipo not in TIPOS_AUTOMATIZACION:
+            tipo = "Gasto"
+        try:
+            dia_mes = int(request.form.get("dia_mes", 1) or 1)
+        except ValueError:
+            dia_mes = 1
+        automatizaciones = leer_automatizaciones()
+        automatizaciones.append(
+            {
+                "tipo": tipo,
+                "categoria": request.form.get("categoria", "").strip(),
+                "descripcion": request.form.get("descripcion", "").strip(),
+                "monto": float(request.form.get("monto", 0) or 0),
+                "dia_mes": min(max(dia_mes, 1), 31),
+                "activo": True,
+                "ultimo_confirmado": "",
+                "ticket_ultimo": "",
+                "ultimo_anulado": "",
+                "razon_anulado": "",
+            }
+        )
+        escribir_automatizaciones(automatizaciones)
+        return redirect(url_for("automatizacion"))
+
+    periodo = periodo_actual()
+    automatizaciones = sorted(
+        sincronizar_automatizaciones_confirmadas(),
+        key=lambda item: (
+            item["categoria"].lower(),
+            item["descripcion"].lower(),
+            item["tipo"].lower(),
+        ),
+    )
+    pendientes = [
+        item
+        for item in automatizaciones
+        if item["activo"]
+        and item.get("ultimo_confirmado") != periodo
+        and not esta_anulada(item, periodo)
+    ]
+    confirmadas = [
+        item
+        for item in automatizaciones
+        if item["activo"] and item.get("ultimo_confirmado") == periodo
+    ]
+    anuladas = [
+        item
+        for item in automatizaciones
+        if item["activo"] and esta_anulada(item, periodo)
+    ]
+    total_gastos_fijos = sum(
+        item["monto"]
+        for item in automatizaciones
+        if item["activo"] and item["tipo"] == "Gasto" and not esta_anulada(item, periodo)
+    )
+    total_gastos_fijos_sin_arriendo = sum(
+        item["monto"]
+        for item in automatizaciones
+        if item["activo"]
+        and item["tipo"] == "Gasto"
+        and not esta_anulada(item, periodo)
+        and "arriendo" not in f"{item['categoria']} {item['descripcion']}".lower()
+    )
+    total_ahorros_planificados = sum(
+        item["monto"]
+        for item in automatizaciones
+        if item["activo"] and item["tipo"] == "Ahorro" and not esta_anulada(item, periodo)
+    )
+    compromiso_mensual = total_gastos_fijos + total_ahorros_planificados
+    sueldo = ultimo_sueldo(leer_movimientos())
+    sueldo_monto = sueldo[1]["monto"] if sueldo else 0
+    return render_template(
+        "automatizacion.html",
+        automatizaciones=automatizaciones,
+        pendientes=pendientes,
+        confirmadas=confirmadas,
+        anuladas=anuladas,
+        periodo=periodo,
+        total_gastos_fijos=total_gastos_fijos,
+        total_gastos_fijos_sin_arriendo=total_gastos_fijos_sin_arriendo,
+        total_ahorros_planificados=total_ahorros_planificados,
+        compromiso_mensual=compromiso_mensual,
+        sueldo_menos_compromisos=sueldo_monto - compromiso_mensual,
+    )
+
+
+@app.route("/automatizacion/confirmar/<int:automatizacion_id>", methods=["POST"])
+def confirmar_automatizacion(automatizacion_id):
+    automatizaciones = leer_automatizaciones()
+    if automatizacion_id < 0 or automatizacion_id >= len(automatizaciones):
+        return redirect(url_for("automatizacion"))
+
+    item = automatizaciones[automatizacion_id]
+    descripcion = item["descripcion"] or item["categoria"]
+    fecha = request.form.get("fecha") or proxima_fecha_mensual(item["dia_mes"])
+    guardar_movimiento(
+        {
+            "fecha": fecha,
+            "tipo": item["tipo"],
+            "categoria": item["categoria"],
+            "descripcion": descripcion,
+            "monto": item["monto"],
+        }
+    )
+    item["ultimo_confirmado"] = periodo_movimiento(fecha) or periodo_actual()
+    item["ticket_ultimo"] = ""
+    item["ultimo_anulado"] = ""
+    item["razon_anulado"] = ""
+    automatizaciones[automatizacion_id] = item
+    escribir_automatizaciones(automatizaciones)
+    return redirect(url_for("automatizacion"))
+
+
+@app.route("/automatizacion/anular/<int:automatizacion_id>", methods=["POST"])
+def anular_automatizacion(automatizacion_id):
+    automatizaciones = leer_automatizaciones()
+    if automatizacion_id < 0 or automatizacion_id >= len(automatizaciones):
+        return redirect(url_for("automatizacion"))
+
+    razon = request.form.get("razon_anulado", "").strip()
+    if not razon:
+        return redirect(url_for("automatizacion"))
+
+    item = automatizaciones[automatizacion_id]
+    item["ultimo_anulado"] = periodo_actual()
+    item["razon_anulado"] = razon
+    item["ultimo_confirmado"] = ""
+    item["ticket_ultimo"] = ""
+    automatizaciones[automatizacion_id] = item
+    escribir_automatizaciones(automatizaciones)
+    return redirect(url_for("automatizacion"))
+
+
+@app.route("/automatizacion/desanular/<int:automatizacion_id>", methods=["POST"])
+def desanular_automatizacion(automatizacion_id):
+    automatizaciones = leer_automatizaciones()
+    if automatizacion_id < 0 or automatizacion_id >= len(automatizaciones):
+        return redirect(url_for("automatizacion"))
+
+    item = automatizaciones[automatizacion_id]
+    if esta_anulada(item):
+        item["ultimo_anulado"] = ""
+        item["razon_anulado"] = ""
+        automatizaciones[automatizacion_id] = item
+        escribir_automatizaciones(automatizaciones)
+    return redirect(url_for("automatizacion"))
+
+
+@app.route("/gastos-fijos/descargar")
+def descargar_gastos_fijos():
+    periodo = periodo_actual()
+    salida = []
+    salida.append(
+        [
+            "Periodo",
+            "Tipo",
+            "Descripcion",
+            "Categoria",
+            "Dia del mes",
+            "Monto",
+            "Estado",
+        ]
+    )
+    for item in sorted(
+        sincronizar_automatizaciones_confirmadas(),
+        key=lambda fila: (
+            fila["descripcion"].lower(),
+            fila["categoria"].lower(),
+            fila["tipo"].lower(),
+        ),
+    ):
+        if item.get("ultimo_confirmado") == periodo:
+            estado = "Confirmado"
+        elif esta_anulada(item, periodo):
+            estado = f"Anulado: {item.get('razon_anulado', '')}"
+        else:
+            estado = "Pendiente"
+        salida.append(
+            [
+                periodo,
+                item["tipo"],
+                item["descripcion"] or "Sin descripcion",
+                item["categoria"] or "Sin categoria",
+                item["dia_mes"],
+                int(item["monto"]) if item["monto"].is_integer() else item["monto"],
+                estado,
+            ]
+        )
+
+    contenido = "\ufeff" + "\n".join(
+        ";".join(str(valor).replace(";", ",") for valor in fila) for fila in salida
+    )
+    return Response(
+        contenido,
+        mimetype="text/csv; charset=utf-8",
+        headers={
+            "Content-Disposition": f"attachment; filename=gastos_fijos_{periodo}.csv"
+        },
+    )
+
+
+@app.route("/automatizacion/editar/<int:automatizacion_id>", methods=["GET", "POST"])
+def editar_automatizacion(automatizacion_id):
+    automatizaciones = leer_automatizaciones()
+    if automatizacion_id < 0 or automatizacion_id >= len(automatizaciones):
+        return redirect(url_for("automatizacion"))
+
+    item = automatizaciones[automatizacion_id]
+    if request.method == "POST":
+        tipo = request.form.get("tipo", item["tipo"])
+        if tipo not in TIPOS_AUTOMATIZACION:
+            tipo = item["tipo"]
+        try:
+            dia_mes = int(request.form.get("dia_mes", item["dia_mes"]) or item["dia_mes"])
+        except ValueError:
+            dia_mes = item["dia_mes"]
+        item.update(
+            {
+                "tipo": tipo,
+                "categoria": request.form.get("categoria", "").strip(),
+                "descripcion": request.form.get("descripcion", "").strip(),
+                "monto": float(request.form.get("monto", 0) or 0),
+                "dia_mes": min(max(dia_mes, 1), 31),
+            }
+        )
+        automatizaciones[automatizacion_id] = item
+        escribir_automatizaciones(automatizaciones)
+        return redirect(url_for("automatizacion"))
+
+    return render_template("editar_automatizacion.html", item=item)
+
+
+@app.route("/automatizacion/eliminar/<int:automatizacion_id>", methods=["POST"])
+def eliminar_automatizacion(automatizacion_id):
+    automatizaciones = leer_automatizaciones()
+    if 0 <= automatizacion_id < len(automatizaciones):
+        automatizaciones.pop(automatizacion_id)
+        escribir_automatizaciones(automatizaciones)
+    return redirect(url_for("automatizacion"))
+
+
+@app.route("/deudas", methods=["GET", "POST"])
+def deudas():
+    if request.method == "POST":
+        tipo = request.form.get("tipo", "Me deben")
+        if tipo not in TIPOS_DEUDA:
+            tipo = "Me deben"
+        deudas_lista = leer_deudas()
+        deudas_lista.append(
+            {
+                "fecha": request.form.get("fecha", ""),
+                "tipo": tipo,
+                "persona": request.form.get("persona", "").strip(),
+                "categoria": request.form.get("categoria", "").strip(),
+                "descripcion": request.form.get("descripcion", "").strip(),
+                "monto": float(request.form.get("monto", 0) or 0),
+                "estado": "Pendiente",
+                "fecha_pago": "",
+            }
+        )
+        escribir_deudas(deudas_lista)
+        return redirect(url_for("deudas"))
+
+    deudas_lista = leer_deudas()
+    pendientes = [item for item in deudas_lista if item["estado"] != "Pagada"]
+    pagadas = [item for item in deudas_lista if item["estado"] == "Pagada"]
+    me_deben = [item for item in pendientes if item["tipo"] == "Me deben"]
+    debo = [item for item in pendientes if item["tipo"] == "Debo"]
+    total_me_deben = sum(item["monto"] for item in me_deben)
+    total_debo = sum(item["monto"] for item in debo)
+    return render_template(
+        "deudas.html",
+        deudas=deudas_lista,
+        pendientes=pendientes,
+        pagadas=pagadas,
+        me_deben=me_deben,
+        debo=debo,
+        total_me_deben=total_me_deben,
+        total_debo=total_debo,
+        balance_deudas=total_me_deben - total_debo,
+    )
+
+
+@app.route("/deudas/pagar/<int:deuda_id>", methods=["POST"])
+def pagar_deuda(deuda_id):
+    deudas_lista = leer_deudas()
+    if deuda_id < 0 or deuda_id >= len(deudas_lista):
+        return redirect(url_for("deudas"))
+
+    item = deudas_lista[deuda_id]
+    if item["estado"] != "Pagada":
+        fecha_pago = request.form.get("fecha_pago") or date.today().isoformat()
+        tipo_movimiento = "Ingreso" if item["tipo"] == "Me deben" else "Gasto"
+        guardar_movimiento(
+            {
+                "fecha": fecha_pago,
+                "tipo": tipo_movimiento,
+                "categoria": item["categoria"] or "Deudas",
+                "descripcion": f"{item['tipo']} - {item['persona']} | {item['descripcion']}",
+                "monto": item["monto"],
+            }
+        )
+        item["estado"] = "Pagada"
+        item["fecha_pago"] = fecha_pago
+        deudas_lista[deuda_id] = item
+        escribir_deudas(deudas_lista)
+    return redirect(url_for("deudas"))
+
+
+@app.route("/historico")
+def historico():
+    vista = request.args.get("vista", "diaria")
+    if vista not in {"diaria", "semanal", "mensual"}:
+        vista = "diaria"
+    filtro_tipo = request.args.get("tipo", "Todos")
+    if filtro_tipo not in TIPOS_VALIDOS | {"Todos"}:
+        filtro_tipo = "Todos"
+    filas, maximo, eje_y, filas_deudas, maximo_deudas, eje_y_deudas = resumen_historico(vista)
+    totales = {
+        "ingresos": sum(fila["ingresos"] for fila in filas),
+        "gastos": sum(fila["gastos"] for fila in filas),
+        "ahorros": sum(fila["ahorros"] for fila in filas),
+        "me_deben": sum(fila["me_deben"] for fila in filas),
+        "debo": sum(fila["debo"] for fila in filas),
+    }
+    datasets_por_tipo = {
+        "Ingreso": {
+            "label": "Ingresos",
+            "values": [fila["ingresos"] for fila in filas],
+            "color": "#15803d",
+            "details": [operaciones_json(fila["detalle_ingresos"], "Ingresos") for fila in filas],
+        },
+        "Gasto": {
+            "label": "Gastos",
+            "values": [fila["gastos"] for fila in filas],
+            "color": "#c2410c",
+            "details": [operaciones_json(fila["detalle_gastos"], "Gastos") for fila in filas],
+        },
+        "Ahorro": {
+            "label": "Ahorros",
+            "values": [fila["ahorros"] for fila in filas],
+            "color": "#7c3aed",
+            "details": [operaciones_json(fila["detalle_ahorros"], "Ahorros") for fila in filas],
+        },
+    }
+    datasets_movimientos = (
+        list(datasets_por_tipo.values())
+        if filtro_tipo == "Todos"
+        else [datasets_por_tipo[filtro_tipo]]
+    )
+    return render_template(
+        "historico.html",
+        vista=vista,
+        filtro_tipo=filtro_tipo,
+        filas=filas,
+        datasets_movimientos=datasets_movimientos,
+        maximo=maximo,
+        eje_y=eje_y,
+        filas_deudas=filas_deudas,
+        maximo_deudas=maximo_deudas,
+        eje_y_deudas=eje_y_deudas,
+        totales=totales,
+    )
+
+
+@app.route("/resumen")
+def resumen():
+    datos = calcular_dashboard()
+    movimientos = datos["movimientos"]
+    busqueda = request.args.get("q", "").strip()
+    filtro_tipo = request.args.get("tipo", "Todos")
+    totales = {}
+    for item in movimientos:
+        clave = (item["tipo"], item["categoria"])
+        totales[clave] = totales.get(clave, 0) + item["monto"]
+    por_categoria = [
+        {"tipo": tipo, "categoria": categoria, "monto": monto}
+        for (tipo, categoria), monto in totales.items()
+    ]
+    por_categoria.sort(key=lambda item: (item["tipo"], -item["monto"]))
+
+    gastos_por_categoria_base = [
+        item for item in por_categoria if item["tipo"] == "Gasto" and item["monto"] > 0
+    ]
+    gastos_por_categoria = gastos_por_categoria_base[:7]
+    otros_gastos = gastos_por_categoria_base[7:]
+    if otros_gastos:
+        gastos_por_categoria.append(
+            {
+                "tipo": "Gasto",
+                "categoria": "Otros",
+                "monto": sum(item["monto"] for item in otros_gastos),
+            }
+        )
+    gastos_por_categoria, torta_gastos, total_gastos_categoria = preparar_segmentos(
+        gastos_por_categoria
+    )
+
+    deuda = sum(
+        item["monto"]
+        for item in movimientos
+        if item["tipo"] == "Gasto" and "deuda" in item["categoria"].lower()
+    )
+    costos_sin_deuda = max(datos["gastos"] - deuda, 0)
+    disponible_ingresos = max(datos["ingresos"] - datos["gastos"] - datos["ahorros"], 0)
+    distribucion_ingresos = [
+        {"categoria": "Gastos", "monto": costos_sin_deuda, "color": "#1f6feb"},
+        {"categoria": "Deuda", "monto": deuda, "color": "#c2410c"},
+        {"categoria": "Ahorro", "monto": datos["ahorros"], "color": "#7c3aed"},
+        {"categoria": "Disponible", "monto": disponible_ingresos, "color": "#15803d"},
+    ]
+    distribucion_ingresos = [item for item in distribucion_ingresos if item["monto"] > 0]
+    distribucion_ingresos, torta_ingresos, total_distribucion_ingresos = preparar_segmentos(
+        distribucion_ingresos
+    )
+
+    movimientos_filtrados = movimientos
+    if filtro_tipo in TIPOS_VALIDOS:
+        movimientos_filtrados = [
+            item for item in movimientos_filtrados if item["tipo"] == filtro_tipo
+        ]
+    if busqueda:
+        texto = busqueda.lower()
+        movimientos_filtrados = [
+            item
+            for item in movimientos_filtrados
+            if texto
+            in " ".join(
+                [
+                    item["fecha"],
+                    item["tipo"],
+                    item["categoria"],
+                    item["descripcion"],
+                    str(item["monto"]),
+                ]
+            ).lower()
+        ]
+
+    return render_template(
+        "resumen.html",
+        ingresos=datos["ingresos"],
+        gastos=datos["gastos"],
+        ahorros=datos["ahorros"],
+        balance=datos["balance"],
+        disponible=datos["disponible"],
+        cuota_semanal=datos["cuota_semanal"],
+        por_categoria=por_categoria,
+        gastos_por_categoria=gastos_por_categoria,
+        torta_gastos=torta_gastos,
+        total_gastos_categoria=total_gastos_categoria,
+        distribucion_ingresos=distribucion_ingresos,
+        torta_ingresos=torta_ingresos,
+        total_distribucion_ingresos=total_distribucion_ingresos,
+        movimientos=movimientos,
+        movimientos_filtrados=movimientos_filtrados,
+        busqueda=busqueda,
+        filtro_tipo=filtro_tipo,
+    )
+
+
+if __name__ == "__main__":
+    asegurar_csv()
+    app.run(debug=True)

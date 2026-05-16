@@ -1,0 +1,187 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Historico</title>
+    <link rel="manifest" href="{{ url_for('static', filename='manifest.json') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+  </head>
+  <body>
+    <header class="topbar">
+      <a class="brand" href="{{ url_for('index') }}">Finanzas</a>
+      <nav>
+        <a href="{{ url_for('index') }}">Dashboard</a>
+        <a href="{{ url_for('resumen') }}">Resumen</a>
+        <a href="{{ url_for('historico') }}">Historico</a>
+        <a href="{{ url_for('automatizacion') }}">Gastos fijos</a>
+        <a href="{{ url_for('deudas') }}">Deudas</a>
+      </nav>
+    </header>
+
+    <main class="container">
+      <section class="dashboard-head">
+        <div>
+          <p class="eyebrow">Tendencias</p>
+          <h1>Historico</h1>
+        </div>
+        <form class="view-switch" method="get">
+          <input type="hidden" name="tipo" value="{{ filtro_tipo }}">
+          <button name="vista" value="diaria" class="{{ 'active' if vista == 'diaria' else '' }}">Diaria</button>
+          <button name="vista" value="semanal" class="{{ 'active' if vista == 'semanal' else '' }}">Semanal</button>
+          <button name="vista" value="mensual" class="{{ 'active' if vista == 'mensual' else '' }}">Mensual</button>
+        </form>
+      </section>
+
+      <section class="panel">
+        <form class="view-switch" method="get">
+          <input type="hidden" name="vista" value="{{ vista }}">
+          <button name="tipo" value="Todos" class="{{ 'active' if filtro_tipo == 'Todos' else '' }}">Todos</button>
+          <button name="tipo" value="Ingreso" class="{{ 'active' if filtro_tipo == 'Ingreso' else '' }}">Ingresos</button>
+          <button name="tipo" value="Gasto" class="{{ 'active' if filtro_tipo == 'Gasto' else '' }}">Gastos</button>
+          <button name="tipo" value="Ahorro" class="{{ 'active' if filtro_tipo == 'Ahorro' else '' }}">Ahorros</button>
+        </form>
+      </section>
+
+      <section class="stats stats-wide">
+        {% if filtro_tipo in ["Todos", "Ingreso"] %}
+          <article>
+            <span>Ingresos</span>
+            <strong class="positive">{{ totales.ingresos|moneda }}</strong>
+          </article>
+        {% endif %}
+        {% if filtro_tipo in ["Todos", "Gasto"] %}
+          <article>
+            <span>Gastos</span>
+            <strong class="negative">{{ totales.gastos|moneda }}</strong>
+          </article>
+        {% endif %}
+        {% if filtro_tipo in ["Todos", "Ahorro"] %}
+          <article>
+            <span>Ahorros</span>
+            <strong class="saving">{{ totales.ahorros|moneda }}</strong>
+          </article>
+        {% endif %}
+        <article>
+          <span>Deudas netas</span>
+          <strong class="{{ 'positive' if (totales.me_deben - totales.debo) >= 0 else 'negative' }}">
+            {{ (totales.me_deben - totales.debo)|moneda }}
+          </strong>
+        </article>
+      </section>
+
+      <section class="panel">
+        <div class="panel-header">
+          <h1>Movimientos por periodo</h1>
+          <span class="hint-inline">Vista {{ vista }} · {{ filtro_tipo }}</span>
+        </div>
+
+        {% if filas %}
+          <div class="chart-canvas-wrap">
+            <canvas id="movimientosHistoricoChart"></canvas>
+          </div>
+          <div class="bar-detail" hidden></div>
+        {% else %}
+          <p class="empty">No hay datos para graficar todavia.</p>
+        {% endif %}
+      </section>
+
+      <section class="panel section-gap">
+        <div class="panel-header">
+          <h1>Deudas por periodo</h1>
+          <span class="hint-inline">Me deben vs debo</span>
+        </div>
+
+        {% if filas_deudas %}
+          <div class="chart-canvas-wrap">
+            <canvas id="deudasHistoricoChart"></canvas>
+          </div>
+          <div class="bar-detail" hidden></div>
+        {% else %}
+          <p class="empty">No hay deudas para graficar todavia.</p>
+        {% endif %}
+      </section>
+
+      <section class="panel section-gap">
+        <h1>Detalle historico</h1>
+        {% if filas %}
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Periodo</th>
+                  {% if filtro_tipo in ["Todos", "Ingreso"] %}
+                    <th>Ingresos</th>
+                  {% endif %}
+                  {% if filtro_tipo in ["Todos", "Gasto"] %}
+                    <th>Gastos</th>
+                  {% endif %}
+                  {% if filtro_tipo in ["Todos", "Ahorro"] %}
+                    <th>Ahorros</th>
+                  {% endif %}
+                  {% if filtro_tipo == "Todos" %}
+                    <th>Me deben</th>
+                    <th>Debo</th>
+                    <th>Balance</th>
+                  {% endif %}
+                </tr>
+              </thead>
+              <tbody>
+                {% for fila in filas %}
+                  <tr>
+                    <td>{{ fila.periodo }}</td>
+                    {% if filtro_tipo in ["Todos", "Ingreso"] %}
+                      <td class="positive">{{ fila.ingresos|moneda }}</td>
+                    {% endif %}
+                    {% if filtro_tipo in ["Todos", "Gasto"] %}
+                      <td class="negative">{{ fila.gastos|moneda }}</td>
+                    {% endif %}
+                    {% if filtro_tipo in ["Todos", "Ahorro"] %}
+                      <td class="saving">{{ fila.ahorros|moneda }}</td>
+                    {% endif %}
+                    {% if filtro_tipo == "Todos" %}
+                      <td class="positive">{{ fila.me_deben|moneda }}</td>
+                      <td class="negative">{{ fila.debo|moneda }}</td>
+                      <td class="{{ 'positive' if fila.balance >= 0 else 'negative' }}">{{ fila.balance|moneda }}</td>
+                    {% endif %}
+                  </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        {% else %}
+          <p class="empty">No hay datos historicos.</p>
+        {% endif %}
+      </section>
+    </main>
+
+    <script id="movimientos-history-data" type="application/json">
+      {{ {
+        "labels": filas|map(attribute="etiqueta")|list,
+        "datasets": datasets_movimientos
+      }|tojson }}
+    </script>
+    <script id="deudas-history-data" type="application/json">
+      {{ {
+        "labels": filas_deudas|map(attribute="etiqueta")|list,
+        "datasets": [
+          {
+            "label": "Me deben",
+            "values": filas_deudas|map(attribute="me_deben")|list,
+            "color": "#1f6feb",
+            "details": filas_deudas|map(attribute="detalle_me_deben")|map("operaciones_json", "Me deben")|list
+          },
+          {
+            "label": "Debo",
+            "values": filas_deudas|map(attribute="debo")|list,
+            "color": "#be123c",
+            "details": filas_deudas|map(attribute="detalle_debo")|map("operaciones_json", "Debo")|list
+          }
+        ]
+      }|tojson }}
+    </script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.2.0"></script>
+    <script src="{{ url_for('static', filename='app.js') }}"></script>
+  </body>
+</html>

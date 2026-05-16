@@ -1,0 +1,17 @@
+{% if items %}
+  <ul class="movement-list">
+    {% for item in items[:5] %}
+      <li>
+        <div>
+          <strong>{{ item.categoria or "Sin categoria" }}</strong>
+          <span>{{ item.fecha }} · {{ item.descripcion or "Sin descripcion" }}</span>
+        </div>
+        <b class="{{ 'positive' if item.tipo == 'Ingreso' else 'saving' if item.tipo == 'Ahorro' else 'negative' }}">
+          {{ item.monto|moneda }}
+        </b>
+      </li>
+    {% endfor %}
+  </ul>
+{% else %}
+  <p class="empty">{{ empty }}</p>
+{% endif %}

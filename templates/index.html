@@ -1,0 +1,116 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="theme-color" content="#1f6feb">
+    <title>Dashboard financiero</title>
+    <link rel="manifest" href="{{ url_for('static', filename='manifest.json') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+  </head>
+  <body>
+    <header class="topbar">
+      <a class="brand" href="{{ url_for('index') }}">Finanzas</a>
+      <nav>
+        <a href="{{ url_for('index') }}">Dashboard</a>
+        <a href="{{ url_for('resumen') }}">Resumen</a>
+        <a href="{{ url_for('historico') }}">Historico</a>
+        <a href="{{ url_for('automatizacion') }}">Gastos fijos</a>
+        <a href="{{ url_for('deudas') }}">Deudas</a>
+        <a class="button button-soft" href="{{ url_for('agregar_por_tipo', tipo='ingreso') }}">Ingreso</a>
+        <a class="button button-danger" href="{{ url_for('agregar_por_tipo', tipo='gasto') }}">Gasto</a>
+        <a class="button button-save" href="{{ url_for('agregar_por_tipo', tipo='ahorro') }}">Ahorro</a>
+      </nav>
+    </header>
+
+    <main class="container">
+      <section class="dashboard-head">
+        <div>
+          <p class="eyebrow">Vista general</p>
+          <h1>Dashboard financiero</h1>
+        </div>
+        <div class="date-card">
+          <span>Calculado al {{ fecha_calculo.strftime("%d-%m-%Y") }}</span>
+          <strong>{{ semanas }} semana{{ '' if semanas == 1 else 's' }} restante{{ '' if semanas == 1 else 's' }}</strong>
+          <small>{{ periodo_inicio.strftime("%d-%m-%Y") }} al {{ periodo_fin.strftime("%d-%m-%Y") }}</small>
+        </div>
+      </section>
+
+      <section class="stats stats-wide">
+        <article>
+          <span>Ingresos</span>
+          <strong class="positive">{{ ingresos|moneda }}</strong>
+        </article>
+        <article>
+          <span>Gastos</span>
+          <strong class="negative">{{ gastos|moneda }}</strong>
+        </article>
+        <article>
+          <span>Ahorros</span>
+          <strong class="saving">{{ ahorros|moneda }}</strong>
+        </article>
+        <article class="highlight">
+          <span>Cuota Semanal Disponible</span>
+          <strong class="{{ 'positive' if cuota_semanal >= 0 else 'negative' }}">
+            {{ cuota_semanal|moneda }}
+          </strong>
+        </article>
+      </section>
+
+      <section class="split">
+        <article class="panel">
+          <h2>Disponible despues de ahorrar</h2>
+          <p class="big-number {{ 'positive' if disponible >= 0 else 'negative' }}">
+            {{ disponible|moneda }}
+          </p>
+          <p class="hint">
+            Se calcula como ingresos menos gastos menos ahorros. La app lo divide automaticamente por las semanas restantes del mes.
+          </p>
+        </article>
+
+        <article class="panel actions-panel">
+          <h2>Agregar movimiento</h2>
+          <div class="quick-actions">
+            <a href="{{ url_for('agregar_por_tipo', tipo='ingreso') }}">Agregar ingreso</a>
+            <a href="{{ url_for('agregar_por_tipo', tipo='gasto') }}">Agregar gasto</a>
+            <a href="{{ url_for('agregar_por_tipo', tipo='ahorro') }}">Agregar ahorro</a>
+          </div>
+        </article>
+      </section>
+
+      <section class="columns">
+        <article class="panel">
+          <div class="panel-header">
+            <h2>Ingresos</h2>
+            <a class="mini-link" href="{{ url_for('agregar_por_tipo', tipo='ingreso') }}">Nuevo</a>
+          </div>
+          {% with items=ingresos_lista, empty='No hay ingresos registrados.' %}
+            {% include "_lista_movimientos.html" %}
+          {% endwith %}
+        </article>
+
+        <article class="panel">
+          <div class="panel-header">
+            <h2>Gastos</h2>
+            <a class="mini-link" href="{{ url_for('agregar_por_tipo', tipo='gasto') }}">Nuevo</a>
+          </div>
+          {% with items=gastos_lista, empty='No hay gastos registrados.' %}
+            {% include "_lista_movimientos.html" %}
+          {% endwith %}
+        </article>
+
+        <article class="panel">
+          <div class="panel-header">
+            <h2>Ahorros</h2>
+            <a class="mini-link" href="{{ url_for('agregar_por_tipo', tipo='ahorro') }}">Nuevo</a>
+          </div>
+          {% with items=ahorros_lista, empty='No hay ahorros registrados.' %}
+            {% include "_lista_movimientos.html" %}
+          {% endwith %}
+        </article>
+      </section>
+    </main>
+
+    <script src="{{ url_for('static', filename='app.js') }}"></script>
+  </body>
+</html>

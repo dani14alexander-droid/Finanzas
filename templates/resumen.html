@@ -1,0 +1,223 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Resumen</title>
+    <link rel="manifest" href="{{ url_for('static', filename='manifest.json') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+  </head>
+  <body>
+    <header class="topbar">
+        <a class="brand" href="{{ url_for('index') }}">Finanzas</a>
+      <nav>
+        <a href="{{ url_for('index') }}">Dashboard</a>
+        <a href="{{ url_for('historico') }}">Historico</a>
+        <a href="{{ url_for('automatizacion') }}">Gastos fijos</a>
+        <a href="{{ url_for('deudas') }}">Deudas</a>
+        <a href="{{ url_for('agregar_por_tipo', tipo='ingreso') }}">Ingreso</a>
+        <a href="{{ url_for('agregar_por_tipo', tipo='gasto') }}">Gasto</a>
+        <a href="{{ url_for('agregar_por_tipo', tipo='ahorro') }}">Ahorro</a>
+      </nav>
+    </header>
+
+    <main class="container">
+      <section class="stats stats-wide">
+        <article>
+          <span>Ingresos</span>
+          <strong class="positive">{{ ingresos|moneda }}</strong>
+        </article>
+        <article>
+          <span>Gastos</span>
+          <strong class="negative">{{ gastos|moneda }}</strong>
+        </article>
+        <article>
+          <span>Ahorros</span>
+          <strong class="saving">{{ ahorros|moneda }}</strong>
+        </article>
+        <article>
+          <span>Disponible</span>
+          <strong class="{{ 'positive' if disponible >= 0 else 'negative' }}">
+            {{ disponible|moneda }}
+          </strong>
+        </article>
+      </section>
+
+      <section class="panel">
+        <div class="panel-header">
+          <h1>Resumen por categoria</h1>
+          <span class="kpi-pill">Cuota semanal: {{ cuota_semanal|moneda }}</span>
+        </div>
+        <div class="charts-grid">
+          <article class="chart-section">
+            <h2>Desglose de gastos</h2>
+            <div class="pie-card">
+              <div class="pie-chart">
+                <canvas id="gastosChart"></canvas>
+              </div>
+            </div>
+            <div class="chart-legend">
+              {% if gastos_por_categoria %}
+                <ul>
+                  {% for item in gastos_por_categoria %}
+                    <li>
+                      <i style="background: {{ item.color }};"></i>
+                      <span>{{ item.categoria or "Sin categoria" }}</span>
+                      <small>{{ "%.1f"|format(item.porcentaje) }}%</small>
+                    </li>
+                  {% endfor %}
+                </ul>
+              {% else %}
+                <p class="empty">Agrega gastos para ver el grafico.</p>
+              {% endif %}
+            </div>
+          </article>
+
+          <article class="chart-section">
+            <h2>Distribucion de ingresos</h2>
+            <div class="pie-card">
+              <div class="pie-chart">
+                <canvas id="ingresosChart"></canvas>
+              </div>
+            </div>
+            <div class="chart-legend">
+              {% if distribucion_ingresos %}
+                <ul>
+                  {% for item in distribucion_ingresos %}
+                    <li>
+                      <i style="background: {{ item.color }};"></i>
+                      <span>{{ item.categoria }}</span>
+                      <small>{{ "%.1f"|format(item.porcentaje) }}%</small>
+                    </li>
+                  {% endfor %}
+                </ul>
+              {% else %}
+                <p class="empty">Agrega ingresos para ver esta distribucion.</p>
+              {% endif %}
+            </div>
+          </article>
+        </div>
+
+        {% if por_categoria %}
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Tipo</th>
+                  <th>Categoria</th>
+                  <th>Monto</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for item in por_categoria %}
+                  <tr>
+                    <td>{{ item.tipo }}</td>
+                    <td>{{ item.categoria or "Sin categoria" }}</td>
+                    <td class="{{ 'positive' if item.tipo == 'Ingreso' else 'saving' if item.tipo == 'Ahorro' else 'negative' }}">
+                      {{ item.monto|moneda }}
+                    </td>
+                  </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        {% else %}
+          <p class="empty">Agrega movimientos para ver el resumen.</p>
+        {% endif %}
+      </section>
+
+      <section class="panel section-gap" id="movimientos">
+        <div class="panel-header">
+          <h1>Modificar movimientos</h1>
+          <span class="hint-inline">Edita ingresos, gastos o ahorros registrados.</span>
+        </div>
+
+        <form class="filter-bar auto-filter" method="get" action="{{ url_for('resumen') }}#movimientos">
+          <label>
+            Buscar
+            <input type="search" name="q" value="{{ busqueda }}" placeholder="Categoria, descripcion, monto...">
+          </label>
+          <label>
+            Tipo
+            <select name="tipo">
+              <option value="Todos" {{ 'selected' if filtro_tipo == 'Todos' else '' }}>Todos</option>
+              <option value="Ingreso" {{ 'selected' if filtro_tipo == 'Ingreso' else '' }}>Ingresos</option>
+              <option value="Gasto" {{ 'selected' if filtro_tipo == 'Gasto' else '' }}>Gastos</option>
+              <option value="Ahorro" {{ 'selected' if filtro_tipo == 'Ahorro' else '' }}>Ahorros</option>
+            </select>
+          </label>
+        </form>
+
+        {% if movimientos_filtrados %}
+          <div class="table-wrap movement-table-wrap">
+            <button class="add-row-button" type="button" aria-label="Agregar movimiento">+</button>
+            <form id="quick-add-movement" method="post" action="{{ url_for('agregar_desde_resumen') }}"></form>
+            <table>
+              <thead>
+                <tr>
+                  <th>Fecha</th>
+                  <th>Tipo</th>
+                  <th>Categoria</th>
+                  <th>Descripcion</th>
+                  <th>Monto</th>
+                  <th>Accion</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr class="inline-add-row" hidden>
+                    <td><input form="quick-add-movement" type="date" name="fecha" required></td>
+                    <td>
+                      <select form="quick-add-movement" name="tipo" required>
+                        <option>Gasto</option>
+                        <option>Ingreso</option>
+                        <option>Ahorro</option>
+                      </select>
+                    </td>
+                    <td><input form="quick-add-movement" type="text" name="categoria" list="categorias-gasto" data-category-list placeholder="Categoria" required></td>
+                    <td><input form="quick-add-movement" type="text" name="descripcion" placeholder="Descripcion"></td>
+                    <td><input form="quick-add-movement" type="number" name="monto" min="0" step="0.01" placeholder="0" required></td>
+                    <td><button form="quick-add-movement" type="submit">Agregar</button></td>
+                </tr>
+                {% for item in movimientos_filtrados %}
+                  <tr>
+                    <td>{{ item.fecha }}</td>
+                    <td>{{ item.tipo }}</td>
+                    <td>{{ item.categoria or "Sin categoria" }}</td>
+                    <td>{{ item.descripcion or "Sin descripcion" }}</td>
+                    <td class="{{ 'positive' if item.tipo == 'Ingreso' else 'saving' if item.tipo == 'Ahorro' else 'negative' }}">
+                      {{ item.monto|moneda }}
+                    </td>
+                    <td>
+                      <a class="table-action" href="{{ url_for('editar', movimiento_id=item.id) }}">Editar</a>
+                    </td>
+                  </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        {% else %}
+          <p class="empty">No hay movimientos que coincidan con la busqueda.</p>
+        {% endif %}
+      </section>
+    </main>
+
+    <script id="gastos-chart-data" type="application/json">
+      {{ {
+        "labels": gastos_por_categoria|map(attribute="categoria")|list,
+        "values": gastos_por_categoria|map(attribute="monto")|list,
+        "colors": gastos_por_categoria|map(attribute="color")|list
+      }|tojson }}
+    </script>
+    <script id="ingresos-chart-data" type="application/json">
+      {{ {
+        "labels": distribucion_ingresos|map(attribute="categoria")|list,
+        "values": distribucion_ingresos|map(attribute="monto")|list,
+        "colors": distribucion_ingresos|map(attribute="color")|list
+      }|tojson }}
+    </script>
+    {% include "_categorias_datalist.html" %}
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.2.0"></script>
+    <script src="{{ url_for('static', filename='app.js') }}"></script>
+  </body>
+</html>

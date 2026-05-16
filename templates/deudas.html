@@ -1,0 +1,143 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Deudas</title>
+    <link rel="manifest" href="{{ url_for('static', filename='manifest.json') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+  </head>
+  <body>
+    <header class="topbar">
+      <a class="brand" href="{{ url_for('index') }}">Finanzas</a>
+      <nav>
+        <a href="{{ url_for('index') }}">Dashboard</a>
+        <a href="{{ url_for('resumen') }}">Resumen</a>
+        <a href="{{ url_for('historico') }}">Historico</a>
+        <a href="{{ url_for('automatizacion') }}">Gastos fijos</a>
+        <a href="{{ url_for('deudas') }}">Deudas</a>
+        <a class="button button-soft" href="{{ url_for('agregar_por_tipo', tipo='ingreso') }}">Ingreso</a>
+        <a class="button button-danger" href="{{ url_for('agregar_por_tipo', tipo='gasto') }}">Gasto</a>
+        <a class="button button-save" href="{{ url_for('agregar_por_tipo', tipo='ahorro') }}">Ahorro</a>
+      </nav>
+    </header>
+
+    <main class="container">
+      <section class="dashboard-head">
+        <div>
+          <p class="eyebrow">Cuentas por cobrar y pagar</p>
+          <h1>Deudas</h1>
+        </div>
+        <div class="date-card">
+          <span>Balance neto</span>
+          <strong class="{{ 'positive' if balance_deudas >= 0 else 'negative' }}">{{ balance_deudas|moneda }}</strong>
+          <small>Me deben menos lo que debo.</small>
+        </div>
+      </section>
+
+      <section class="stats">
+        <article>
+          <span>Me deben</span>
+          <strong class="positive">{{ total_me_deben|moneda }}</strong>
+        </article>
+        <article>
+          <span>Debo</span>
+          <strong class="negative">{{ total_debo|moneda }}</strong>
+        </article>
+        <article>
+          <span>Pendientes</span>
+          <strong>{{ pendientes|length }}</strong>
+        </article>
+      </section>
+
+      <section class="automation-grid">
+        <article class="panel">
+          <h2>Nueva deuda</h2>
+          <form method="post" class="form">
+            <label>
+              Tipo
+              <select name="tipo" required>
+                <option>Me deben</option>
+                <option>Debo</option>
+              </select>
+            </label>
+
+            <label>
+              Persona
+              <input type="text" name="persona" placeholder="Nombre o entidad" required>
+            </label>
+
+            <label>
+              Categoria
+              <input type="text" name="categoria" list="categorias-me-deben" data-category-list placeholder="Prestamo, tarjeta, adelanto..." required>
+            </label>
+            {% include "_categorias_datalist.html" %}
+
+            <label>
+              Descripcion
+              <input type="text" name="descripcion" placeholder="Detalle opcional">
+            </label>
+
+            <label>
+              Fecha
+              <input type="date" name="fecha" required>
+            </label>
+
+            <label>
+              Monto
+              <input type="number" name="monto" min="0" step="0.01" required>
+            </label>
+
+            <button type="submit">Guardar deuda</button>
+          </form>
+        </article>
+
+        <article class="panel">
+          <div class="panel-header">
+            <h2>Me deben</h2>
+            <span class="kpi-pill">{{ me_deben|length }} pendiente{{ '' if me_deben|length == 1 else 's' }}</span>
+          </div>
+          {% with items=me_deben, empty='No hay deudas a tu favor.' %}
+            {% include "_lista_deudas.html" %}
+          {% endwith %}
+        </article>
+      </section>
+
+      <section class="columns two-columns section-gap">
+        <article class="panel">
+          <div class="panel-header">
+            <h2>Debo</h2>
+            <span class="kpi-pill">{{ debo|length }} pendiente{{ '' if debo|length == 1 else 's' }}</span>
+          </div>
+          {% with items=debo, empty='No tienes deudas pendientes.' %}
+            {% include "_lista_deudas.html" %}
+          {% endwith %}
+        </article>
+
+        <article class="panel">
+          <div class="panel-header">
+            <h2>Pagadas</h2>
+            <span class="hint-inline">Al pagar se registra como ingreso o gasto.</span>
+          </div>
+          {% if pagadas %}
+            <ul class="movement-list">
+              {% for item in pagadas[:6] %}
+                <li>
+                  <div>
+                    <strong>{{ item.persona }}</strong>
+                    <span>{{ item.tipo }} · {{ item.fecha_pago }} · {{ item.descripcion or "Sin descripcion" }}</span>
+                  </div>
+                  <b class="{{ 'positive' if item.tipo == 'Me deben' else 'negative' }}">{{ item.monto|moneda }}</b>
+                </li>
+              {% endfor %}
+            </ul>
+          {% else %}
+            <p class="empty">Todavia no hay deudas pagadas.</p>
+          {% endif %}
+        </article>
+      </section>
+    </main>
+
+    <script src="{{ url_for('static', filename='app.js') }}"></script>
+  </body>
+</html>

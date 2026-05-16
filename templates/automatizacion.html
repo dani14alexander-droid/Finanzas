@@ -1,0 +1,232 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Gastos fijos</title>
+    <link rel="manifest" href="{{ url_for('static', filename='manifest.json') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+  </head>
+  <body>
+    <header class="topbar">
+      <a class="brand" href="{{ url_for('index') }}">Finanzas</a>
+      <nav>
+        <a href="{{ url_for('index') }}">Dashboard</a>
+        <a href="{{ url_for('resumen') }}">Resumen</a>
+        <a href="{{ url_for('historico') }}">Historico</a>
+        <a href="{{ url_for('automatizacion') }}">Gastos fijos</a>
+        <a href="{{ url_for('deudas') }}">Deudas</a>
+        <a class="button button-soft" href="{{ url_for('agregar_por_tipo', tipo='ingreso') }}">Ingreso</a>
+        <a class="button button-danger" href="{{ url_for('agregar_por_tipo', tipo='gasto') }}">Gasto</a>
+        <a class="button button-save" href="{{ url_for('agregar_por_tipo', tipo='ahorro') }}">Ahorro</a>
+      </nav>
+    </header>
+
+    <main class="container">
+      <section class="dashboard-head">
+        <div>
+          <p class="eyebrow">Gastos y ahorros mensuales</p>
+          <h1>Gastos fijos</h1>
+          <a class="table-action" href="{{ url_for('descargar_gastos_fijos') }}">Descargar Excel</a>
+        </div>
+        <div class="date-card">
+          <span>Periodo actual</span>
+          <strong>{{ periodo }}</strong>
+          <small>Confirma cada item para registrarlo.</small>
+        </div>
+      </section>
+
+      <section class="stats fixed-stats">
+        <article>
+          <span>Total gastos fijos</span>
+          <strong class="negative">{{ total_gastos_fijos|moneda }}</strong>
+        </article>
+        <article>
+          <span>Gastos fijos sin arriendo</span>
+          <strong class="negative">{{ total_gastos_fijos_sin_arriendo|moneda }}</strong>
+        </article>
+        <article>
+          <span>Ahorros planificados</span>
+          <strong class="saving">{{ total_ahorros_planificados|moneda }}</strong>
+        </article>
+        <article>
+          <span>Compromiso mensual</span>
+          <strong>{{ compromiso_mensual|moneda }}</strong>
+        </article>
+        <article>
+          <span>Sueldo menos compromisos</span>
+          <strong class="{{ 'positive' if sueldo_menos_compromisos >= 0 else 'negative' }}">
+            {{ sueldo_menos_compromisos|moneda }}
+          </strong>
+        </article>
+      </section>
+
+      <section class="automation-grid">
+        <article class="panel">
+          <h2>Nuevo gasto fijo</h2>
+          <form method="post" class="form">
+            <label>
+              Tipo
+              <select name="tipo" required>
+                <option>Gasto</option>
+                <option>Ahorro</option>
+              </select>
+            </label>
+
+            <label>
+              Categoria
+              <input type="text" name="categoria" list="categorias-gasto" data-category-list placeholder="Arriendo, internet, emergencia..." required>
+            </label>
+            {% include "_categorias_datalist.html" %}
+
+            <label>
+              Descripcion
+              <input type="text" name="descripcion" placeholder="Detalle del gasto o plan de ahorro">
+            </label>
+
+            <label>
+              Monto mensual
+              <input type="number" name="monto" min="0" step="0.01" required>
+            </label>
+
+            <label>
+              Dia del mes
+              <input type="number" name="dia_mes" min="1" max="31" value="1" required>
+            </label>
+
+            <button type="submit">Guardar gasto fijo</button>
+          </form>
+        </article>
+
+        <article class="panel">
+          <div class="panel-header">
+            <h2>Gastos fijos guardados</h2>
+            <span class="kpi-pill">{{ automatizaciones|length }} guardado{{ '' if automatizaciones|length == 1 else 's' }}</span>
+          </div>
+
+          {% if automatizaciones %}
+            <div class="automation-list automation-scroll">
+              {% for item in automatizaciones %}
+                {% if item in confirmadas %}
+                  <div class="automation-item">
+                    <div>
+                      <strong>{{ item.descripcion or "Sin descripcion" }}</strong>
+                      <span>{{ item.tipo }} · dia {{ item.dia_mes }} · {{ item.categoria or "Sin categoria" }}</span>
+                      <b class="{{ 'saving' if item.tipo == 'Ahorro' else 'negative' }}">{{ item.monto|moneda }}</b>
+                    </div>
+                    <div class="automation-actions">
+                      <span class="status status-ok">Confirmada</span>
+                      <a class="table-action" href="{{ url_for('editar_automatizacion', automatizacion_id=item.id) }}">Editar</a>
+                    </div>
+                  </div>
+                {% elif item in anuladas %}
+                  <div class="automation-item">
+                    <div>
+                      <strong>{{ item.descripcion or "Sin descripcion" }}</strong>
+                      <span>{{ item.tipo }} · dia {{ item.dia_mes }} · {{ item.categoria or "Sin categoria" }}</span>
+                      <span>Razon: {{ item.razon_anulado }}</span>
+                      <b class="{{ 'saving' if item.tipo == 'Ahorro' else 'negative' }}">{{ item.monto|moneda }}</b>
+                    </div>
+                    <div class="automation-actions">
+                      <span class="status">Anulada</span>
+                      <form method="post" action="{{ url_for('desanular_automatizacion', automatizacion_id=item.id) }}">
+                        <button type="submit">Dejar pendiente</button>
+                      </form>
+                      <a class="table-action" href="{{ url_for('editar_automatizacion', automatizacion_id=item.id) }}">Editar</a>
+                    </div>
+                  </div>
+                {% else %}
+                  <form class="automation-item" method="post" action="{{ url_for('confirmar_automatizacion', automatizacion_id=item.id) }}">
+                    <div>
+                      <strong>{{ item.descripcion or "Sin descripcion" }}</strong>
+                      <span>{{ item.tipo }} · dia {{ item.dia_mes }} · {{ item.categoria or "Sin categoria" }}</span>
+                      <b class="{{ 'saving' if item.tipo == 'Ahorro' else 'negative' }}">{{ item.monto|moneda }}</b>
+                    </div>
+                    <label>
+                      Fecha
+                      <input type="date" name="fecha">
+                    </label>
+                    <div class="automation-actions">
+                      <button type="submit">Confirmar</button>
+                      <button
+                        type="button"
+                        data-open-dialog="anular-{{ item.id }}"
+                      >
+                        Anular
+                      </button>
+                      <a class="table-action" href="{{ url_for('editar_automatizacion', automatizacion_id=item.id) }}">Editar</a>
+                    </div>
+                  </form>
+                  <dialog class="reason-dialog" id="anular-{{ item.id }}">
+                    <form method="post" action="{{ url_for('anular_automatizacion', automatizacion_id=item.id) }}">
+                      <div>
+                        <p class="eyebrow">Anular {{ periodo }}</p>
+                        <h2>{{ item.descripcion or item.categoria or "Gasto fijo" }}</h2>
+                        <span>{{ item.tipo }} · {{ item.monto|moneda }}</span>
+                      </div>
+                      <label>
+                        Razon
+                        <input type="text" name="razon_anulado" placeholder="Motivo de la anulacion" required autofocus>
+                      </label>
+                      <div class="actions">
+                        <button type="button" class="link-button" data-close-dialog>Cancelar</button>
+                        <button type="submit">Anular este mes</button>
+                      </div>
+                    </form>
+                  </dialog>
+                {% endif %}
+              {% endfor %}
+            </div>
+          {% else %}
+            <p class="empty">No hay gastos fijos guardados.</p>
+          {% endif %}
+        </article>
+      </section>
+
+      <section class="panel section-gap">
+        <div class="panel-header">
+          <h2>Gastos fijos del mes</h2>
+          <span class="hint-inline">Las confirmadas ya aparecen como movimientos reales.</span>
+        </div>
+        {% if automatizaciones %}
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Tipo</th>
+                  <th>Descripcion</th>
+                  <th>Dia</th>
+                  <th>Monto</th>
+                  <th>Estado</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for item in automatizaciones %}
+                  <tr>
+                    <td>{{ item.tipo }}</td>
+                    <td>{{ item.descripcion or "Sin descripcion" }}</td>
+                    <td>{{ item.dia_mes }}</td>
+                    <td class="{{ 'saving' if item.tipo == 'Ahorro' else 'negative' }}">{{ item.monto|moneda }}</td>
+                    <td>
+                      {% if item in confirmadas %}
+                        <span class="status status-ok">Confirmado</span>
+                      {% elif item in anuladas %}
+                        <span class="status">Anulado: {{ item.razon_anulado }}</span>
+                      {% else %}
+                        <span class="status">Pendiente</span>
+                      {% endif %}
+                    </td>
+                  </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        {% else %}
+          <p class="empty">Crea tu primer gasto mensual o plan de ahorro.</p>
+        {% endif %}
+      </section>
+    </main>
+
+    <script src="{{ url_for('static', filename='app.js') }}"></script>
+  </body>
+</html>
