@@ -1,0 +1,7 @@
+__pycache__/
+*.pyc
+.env
+link.txt
+Finanzas/.env
+Finanzas/link.txt
+Finanzas/data/*.csv
