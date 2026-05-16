@@ -5,6 +5,14 @@ import math
 import calendar
 import csv
 import json
+import os
+
+try:
+    import psycopg
+    from psycopg.rows import dict_row
+except ImportError:
+    psycopg = None
+    dict_row = None
 
 from flask import Flask, Response, redirect, render_template, request, url_for
 
@@ -16,6 +24,9 @@ DATA_DIR = BASE_DIR / "data"
 CSV_PATH = DATA_DIR / "finanzas.csv"
 AUTOMATIZACIONES_PATH = DATA_DIR / "automatizaciones.csv"
 DEUDAS_PATH = DATA_DIR / "deudas.csv"
+ENV_PATH = BASE_DIR / ".env"
+LINK_PATH = BASE_DIR / "link.txt"
+DB_LISTA = False
 COLUMNAS = ["fecha", "tipo", "categoria", "descripcion", "monto"]
 AUTOMATIZACION_COLUMNAS = [
     "tipo",
@@ -44,6 +55,92 @@ TIPOS_AUTOMATIZACION = {"Gasto", "Ahorro"}
 TIPOS_DEUDA = {"Me deben", "Debo"}
 
 
+def cargar_entorno_local():
+    if ENV_PATH.exists():
+        for linea in ENV_PATH.read_text(encoding="utf-8").splitlines():
+            linea = linea.strip()
+            if not linea or linea.startswith("#") or "=" not in linea:
+                continue
+            clave, valor = linea.split("=", 1)
+            os.environ.setdefault(clave.strip(), valor.strip().strip('"').strip("'"))
+    if not os.getenv("DATABASE_URL") and LINK_PATH.exists():
+        os.environ["DATABASE_URL"] = LINK_PATH.read_text(encoding="utf-8").strip()
+
+
+cargar_entorno_local()
+
+
+def database_url():
+    url = os.getenv("DATABASE_URL", "").strip()
+    if url and "sslmode=" not in url:
+        separador = "&" if "?" in url else "?"
+        url = f"{url}{separador}sslmode=require"
+    return url
+
+
+def usar_base_datos():
+    return bool(database_url() and psycopg)
+
+
+def conectar_db():
+    return psycopg.connect(database_url(), row_factory=dict_row)
+
+
+def asegurar_db():
+    global DB_LISTA
+    if not usar_base_datos():
+        return
+    if DB_LISTA:
+        return
+    with conectar_db() as conexion:
+        with conexion.cursor() as cursor:
+            cursor.execute(
+                """
+                CREATE TABLE IF NOT EXISTS movimientos (
+                    id BIGSERIAL PRIMARY KEY,
+                    fecha TEXT NOT NULL DEFAULT '',
+                    tipo TEXT NOT NULL DEFAULT '',
+                    categoria TEXT NOT NULL DEFAULT '',
+                    descripcion TEXT NOT NULL DEFAULT '',
+                    monto DOUBLE PRECISION NOT NULL DEFAULT 0
+                )
+                """
+            )
+            cursor.execute(
+                """
+                CREATE TABLE IF NOT EXISTS automatizaciones (
+                    id BIGSERIAL PRIMARY KEY,
+                    tipo TEXT NOT NULL DEFAULT '',
+                    categoria TEXT NOT NULL DEFAULT '',
+                    descripcion TEXT NOT NULL DEFAULT '',
+                    monto DOUBLE PRECISION NOT NULL DEFAULT 0,
+                    dia_mes INTEGER NOT NULL DEFAULT 1,
+                    activo BOOLEAN NOT NULL DEFAULT TRUE,
+                    ultimo_confirmado TEXT NOT NULL DEFAULT '',
+                    ticket_ultimo TEXT NOT NULL DEFAULT '',
+                    ultimo_anulado TEXT NOT NULL DEFAULT '',
+                    razon_anulado TEXT NOT NULL DEFAULT ''
+                )
+                """
+            )
+            cursor.execute(
+                """
+                CREATE TABLE IF NOT EXISTS deudas (
+                    id BIGSERIAL PRIMARY KEY,
+                    fecha TEXT NOT NULL DEFAULT '',
+                    tipo TEXT NOT NULL DEFAULT '',
+                    persona TEXT NOT NULL DEFAULT '',
+                    categoria TEXT NOT NULL DEFAULT '',
+                    descripcion TEXT NOT NULL DEFAULT '',
+                    monto DOUBLE PRECISION NOT NULL DEFAULT 0,
+                    estado TEXT NOT NULL DEFAULT '',
+                    fecha_pago TEXT NOT NULL DEFAULT ''
+                )
+                """
+            )
+    DB_LISTA = True
+
+
 def asegurar_csv():
     DATA_DIR.mkdir(exist_ok=True)
     if not CSV_PATH.exists():
@@ -61,6 +158,21 @@ def asegurar_csv():
 
 
 def leer_movimientos():
+    if usar_base_datos():
+        asegurar_db()
+        with conectar_db() as conexion:
+            with conexion.cursor() as cursor:
+                cursor.execute(
+                    "SELECT fecha, tipo, categoria, descripcion, monto FROM movimientos ORDER BY id"
+                )
+                movimientos = []
+                for indice, fila in enumerate(cursor.fetchall()):
+                    movimiento = {columna: fila.get(columna, "") for columna in COLUMNAS}
+                    movimiento["monto"] = float(movimiento["monto"] or 0)
+                    movimiento["id"] = indice
+                    movimientos.append(movimiento)
+                return movimientos
+
     asegurar_csv()
     with CSV_PATH.open(newline="", encoding="utf-8") as archivo:
         reader = csv.DictReader(archivo)
@@ -77,6 +189,29 @@ def leer_movimientos():
 
 
 def escribir_movimientos(movimientos):
+    if usar_base_datos():
+        asegurar_db()
+        with conectar_db() as conexion:
+            with conexion.cursor() as cursor:
+                cursor.execute("TRUNCATE movimientos RESTART IDENTITY")
+                cursor.executemany(
+                    """
+                    INSERT INTO movimientos (fecha, tipo, categoria, descripcion, monto)
+                    VALUES (%s, %s, %s, %s, %s)
+                    """,
+                    [
+                        (
+                            movimiento.get("fecha", ""),
+                            movimiento.get("tipo", ""),
+                            movimiento.get("categoria", ""),
+                            movimiento.get("descripcion", ""),
+                            float(movimiento.get("monto") or 0),
+                        )
+                        for movimiento in movimientos
+                    ],
+                )
+        return
+
     asegurar_csv()
     with CSV_PATH.open("w", newline="", encoding="utf-8") as archivo:
         writer = csv.DictWriter(archivo, fieldnames=COLUMNAS)
@@ -86,6 +221,25 @@ def escribir_movimientos(movimientos):
 
 
 def guardar_movimiento(movimiento):
+    if usar_base_datos():
+        asegurar_db()
+        with conectar_db() as conexion:
+            with conexion.cursor() as cursor:
+                cursor.execute(
+                    """
+                    INSERT INTO movimientos (fecha, tipo, categoria, descripcion, monto)
+                    VALUES (%s, %s, %s, %s, %s)
+                    """,
+                    (
+                        movimiento.get("fecha", ""),
+                        movimiento.get("tipo", ""),
+                        movimiento.get("categoria", ""),
+                        movimiento.get("descripcion", ""),
+                        float(movimiento.get("monto") or 0),
+                    ),
+                )
+        return
+
     asegurar_csv()
     with CSV_PATH.open("a", newline="", encoding="utf-8") as archivo:
         writer = csv.DictWriter(archivo, fieldnames=COLUMNAS)
@@ -93,6 +247,28 @@ def guardar_movimiento(movimiento):
 
 
 def leer_automatizaciones():
+    if usar_base_datos():
+        asegurar_db()
+        with conectar_db() as conexion:
+            with conexion.cursor() as cursor:
+                cursor.execute(
+                    """
+                    SELECT tipo, categoria, descripcion, monto, dia_mes, activo,
+                           ultimo_confirmado, ticket_ultimo, ultimo_anulado, razon_anulado
+                    FROM automatizaciones
+                    ORDER BY id
+                    """
+                )
+                automatizaciones = []
+                for indice, fila in enumerate(cursor.fetchall()):
+                    item = {columna: fila.get(columna, "") for columna in AUTOMATIZACION_COLUMNAS}
+                    item["monto"] = float(item["monto"] or 0)
+                    item["dia_mes"] = int(item["dia_mes"] or 1)
+                    item["activo"] = bool(item["activo"])
+                    item["id"] = indice
+                    automatizaciones.append(item)
+                return automatizaciones
+
     asegurar_csv()
     with AUTOMATIZACIONES_PATH.open(newline="", encoding="utf-8") as archivo:
         reader = csv.DictReader(archivo)
@@ -114,6 +290,37 @@ def leer_automatizaciones():
 
 
 def escribir_automatizaciones(automatizaciones):
+    if usar_base_datos():
+        asegurar_db()
+        with conectar_db() as conexion:
+            with conexion.cursor() as cursor:
+                cursor.execute("TRUNCATE automatizaciones RESTART IDENTITY")
+                cursor.executemany(
+                    """
+                    INSERT INTO automatizaciones (
+                        tipo, categoria, descripcion, monto, dia_mes, activo,
+                        ultimo_confirmado, ticket_ultimo, ultimo_anulado, razon_anulado
+                    )
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    """,
+                    [
+                        (
+                            item.get("tipo", ""),
+                            item.get("categoria", ""),
+                            item.get("descripcion", ""),
+                            float(item.get("monto") or 0),
+                            int(item.get("dia_mes") or 1),
+                            bool(item.get("activo", True)),
+                            item.get("ultimo_confirmado", ""),
+                            item.get("ticket_ultimo", ""),
+                            item.get("ultimo_anulado", ""),
+                            item.get("razon_anulado", ""),
+                        )
+                        for item in automatizaciones
+                    ],
+                )
+        return
+
     asegurar_csv()
     with AUTOMATIZACIONES_PATH.open("w", newline="", encoding="utf-8") as archivo:
         writer = csv.DictWriter(archivo, fieldnames=AUTOMATIZACION_COLUMNAS)
@@ -125,6 +332,25 @@ def escribir_automatizaciones(automatizaciones):
 
 
 def leer_deudas():
+    if usar_base_datos():
+        asegurar_db()
+        with conectar_db() as conexion:
+            with conexion.cursor() as cursor:
+                cursor.execute(
+                    """
+                    SELECT fecha, tipo, persona, categoria, descripcion, monto, estado, fecha_pago
+                    FROM deudas
+                    ORDER BY id
+                    """
+                )
+                deudas = []
+                for indice, fila in enumerate(cursor.fetchall()):
+                    item = {columna: fila.get(columna, "") for columna in DEUDA_COLUMNAS}
+                    item["monto"] = float(item["monto"] or 0)
+                    item["id"] = indice
+                    deudas.append(item)
+                return deudas
+
     asegurar_csv()
     with DEUDAS_PATH.open(newline="", encoding="utf-8") as archivo:
         reader = csv.DictReader(archivo)
@@ -185,6 +411,34 @@ def inyectar_categorias():
         "lista_categoria_para_tipo": lista_categoria_para_tipo,
     }
 def escribir_deudas(deudas):
+    if usar_base_datos():
+        asegurar_db()
+        with conectar_db() as conexion:
+            with conexion.cursor() as cursor:
+                cursor.execute("TRUNCATE deudas RESTART IDENTITY")
+                cursor.executemany(
+                    """
+                    INSERT INTO deudas (
+                        fecha, tipo, persona, categoria, descripcion, monto, estado, fecha_pago
+                    )
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                    """,
+                    [
+                        (
+                            item.get("fecha", ""),
+                            item.get("tipo", ""),
+                            item.get("persona", ""),
+                            item.get("categoria", ""),
+                            item.get("descripcion", ""),
+                            float(item.get("monto") or 0),
+                            item.get("estado", ""),
+                            item.get("fecha_pago", ""),
+                        )
+                        for item in deudas
+                    ],
+                )
+        return
+
     asegurar_csv()
     with DEUDAS_PATH.open("w", newline="", encoding="utf-8") as archivo:
         writer = csv.DictWriter(archivo, fieldnames=DEUDA_COLUMNAS)
