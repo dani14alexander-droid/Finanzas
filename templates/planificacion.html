@@ -1,0 +1,185 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Planificacion</title>
+    <link rel="manifest" href="{{ url_for('static', filename='manifest.json') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+  </head>
+  <body>
+    <header class="topbar">
+      <a class="brand" href="{{ url_for('index') }}">Finanzas</a>
+      <nav>
+        <a href="{{ url_for('index') }}">Dashboard</a>
+        <a href="{{ url_for('resumen') }}">Resumen</a>
+        <a href="{{ url_for('planificacion') }}">Planificacion</a>
+        <a href="{{ url_for('historico') }}">Historico</a>
+        <a href="{{ url_for('automatizacion') }}">Gastos fijos</a>
+        <a href="{{ url_for('deudas') }}">Deudas</a>
+      </nav>
+    </header>
+
+    <main class="container">
+      <section class="dashboard-head">
+        <div>
+          <p class="eyebrow">Escenario del periodo</p>
+          <h1>Planificacion</h1>
+        </div>
+        <div class="date-card">
+          <span>Periodo planificado</span>
+          <strong>{{ periodo_inicio.strftime("%d-%m-%Y") }}</strong>
+          <small>al {{ periodo_fin.strftime("%d-%m-%Y") }}</small>
+        </div>
+      </section>
+
+      <section class="stats stats-wide">
+        <article>
+          <span>Ingresos proyectados</span>
+          <strong class="positive">{{ ingresos|moneda }}</strong>
+        </article>
+        <article>
+          <span>Gastos proyectados</span>
+          <strong class="negative">{{ gastos|moneda }}</strong>
+        </article>
+        <article>
+          <span>Ahorros proyectados</span>
+          <strong class="saving">{{ ahorros|moneda }}</strong>
+        </article>
+        <article class="highlight">
+          <span>Disponible proyectado</span>
+          <strong class="{{ 'positive' if disponible >= 0 else 'negative' }}">{{ disponible|moneda }}</strong>
+        </article>
+      </section>
+
+      <section class="automation-grid">
+        <article class="panel">
+          <h2>Agregar planificado</h2>
+          <form method="post" class="form">
+            <label>
+              Tipo
+              <select name="tipo" required>
+                <option>Gasto</option>
+                <option>Ingreso</option>
+                <option>Ahorro</option>
+              </select>
+            </label>
+
+            <label>
+              Categoria
+              <input type="text" name="categoria" list="categorias-gasto" data-category-list placeholder="Categoria" required>
+            </label>
+            {% include "_categorias_datalist.html" %}
+
+            <label>
+              Descripcion
+              <input type="text" name="descripcion" placeholder="Detalle opcional">
+            </label>
+
+            <label>
+              Fecha
+              <input type="date" name="fecha" required>
+            </label>
+
+            <label>
+              Monto
+              <input type="number" name="monto" min="0" step="0.01" required>
+            </label>
+
+            <button type="submit">Agregar a planificacion</button>
+          </form>
+        </article>
+
+        <article class="panel">
+          <div class="panel-header">
+            <h2>Como se calcula</h2>
+            <span class="hint-inline">No afecta otras paginas</span>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Origen</th>
+                  <th>Ingresos</th>
+                  <th>Gastos</th>
+                  <th>Ahorros</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>Registrado</td>
+                  <td class="positive">{{ ingresos_base|moneda }}</td>
+                  <td class="negative">{{ gastos_base|moneda }}</td>
+                  <td class="saving">{{ ahorros_base|moneda }}</td>
+                </tr>
+                <tr>
+                  <td>Gastos fijos pendientes</td>
+                  <td>{{ 0|moneda }}</td>
+                  <td class="negative">{{ fijos_gastos|moneda }}</td>
+                  <td class="saving">{{ fijos_ahorros|moneda }}</td>
+                </tr>
+                <tr>
+                  <td>Planificado</td>
+                  <td class="positive">{{ plan_ingresos|moneda }}</td>
+                  <td class="negative">{{ plan_gastos|moneda }}</td>
+                  <td class="saving">{{ plan_ahorros|moneda }}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </article>
+      </section>
+
+      <section class="columns two-columns section-gap">
+        <article class="panel">
+          <div class="panel-header">
+            <h2>Gastos fijos pendientes</h2>
+            <span class="kpi-pill">{{ fijos_pendientes|length }}</span>
+          </div>
+          {% if fijos_pendientes %}
+            <ul class="movement-list">
+              {% for item in fijos_pendientes %}
+                <li>
+                  <div>
+                    <strong>{{ item.descripcion or item.categoria or "Sin descripcion" }}</strong>
+                    <span>{{ item.tipo }} · dia {{ item.dia_mes }} · {{ item.categoria or "Sin categoria" }}</span>
+                  </div>
+                  <b class="{{ 'saving' if item.tipo == 'Ahorro' else 'negative' }}">{{ item.monto|moneda }}</b>
+                </li>
+              {% endfor %}
+            </ul>
+          {% else %}
+            <p class="empty">No hay gastos fijos pendientes para sumar.</p>
+          {% endif %}
+        </article>
+
+        <article class="panel">
+          <div class="panel-header">
+            <h2>Planificados</h2>
+            <span class="kpi-pill">{{ planificaciones|length }}</span>
+          </div>
+          {% if planificaciones %}
+            <ul class="movement-list">
+              {% for item in planificaciones %}
+                <li>
+                  <div>
+                    <strong>{{ item.categoria or "Sin categoria" }}</strong>
+                    <span>{{ item.tipo }} · {{ item.fecha }} · {{ item.descripcion or "Sin descripcion" }}</span>
+                  </div>
+                  <b class="{{ 'positive' if item.tipo == 'Ingreso' else 'saving' if item.tipo == 'Ahorro' else 'negative' }}">{{ item.monto|moneda }}</b>
+                  <form method="post" action="{{ url_for('eliminar_planificacion', planificacion_id=item.id) }}">
+                    <button type="submit" class="danger-button">Eliminar</button>
+                  </form>
+                </li>
+              {% endfor %}
+            </ul>
+          {% else %}
+            <p class="empty">Todavia no hay movimientos planificados en este periodo.</p>
+          {% endif %}
+        </article>
+      </section>
+    </main>
+
+    <script src="{{ url_for('static', filename='app.js') }}"></script>
+  </body>
+</html>

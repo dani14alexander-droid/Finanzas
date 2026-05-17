@@ -24,6 +24,7 @@ DATA_DIR = BASE_DIR / "data"
 CSV_PATH = DATA_DIR / "finanzas.csv"
 AUTOMATIZACIONES_PATH = DATA_DIR / "automatizaciones.csv"
 DEUDAS_PATH = DATA_DIR / "deudas.csv"
+PLANIFICACION_PATH = DATA_DIR / "planificacion.csv"
 ENV_PATH = BASE_DIR / ".env"
 LINK_PATH = BASE_DIR / "link.txt"
 DB_LISTA = False
@@ -50,6 +51,7 @@ DEUDA_COLUMNAS = [
     "estado",
     "fecha_pago",
 ]
+PLANIFICACION_COLUMNAS = ["fecha", "tipo", "categoria", "descripcion", "monto"]
 TIPOS_VALIDOS = {"Ingreso", "Gasto", "Ahorro"}
 TIPOS_AUTOMATIZACION = {"Gasto", "Ahorro"}
 TIPOS_DEUDA = {"Me deben", "Debo"}
@@ -138,6 +140,18 @@ def asegurar_db():
                 )
                 """
             )
+            cursor.execute(
+                """
+                CREATE TABLE IF NOT EXISTS planificacion (
+                    id BIGSERIAL PRIMARY KEY,
+                    fecha TEXT NOT NULL DEFAULT '',
+                    tipo TEXT NOT NULL DEFAULT '',
+                    categoria TEXT NOT NULL DEFAULT '',
+                    descripcion TEXT NOT NULL DEFAULT '',
+                    monto DOUBLE PRECISION NOT NULL DEFAULT 0
+                )
+                """
+            )
     DB_LISTA = True
 
 
@@ -154,6 +168,10 @@ def asegurar_csv():
     if not DEUDAS_PATH.exists():
         with DEUDAS_PATH.open("w", newline="", encoding="utf-8") as archivo:
             writer = csv.DictWriter(archivo, fieldnames=DEUDA_COLUMNAS)
+            writer.writeheader()
+    if not PLANIFICACION_PATH.exists():
+        with PLANIFICACION_PATH.open("w", newline="", encoding="utf-8") as archivo:
+            writer = csv.DictWriter(archivo, fieldnames=PLANIFICACION_COLUMNAS)
             writer.writeheader()
 
 
@@ -386,6 +404,8 @@ def categorias_existentes():
         agregar_categoria(item.get("tipo", ""), item.get("categoria", ""))
     for item in leer_deudas():
         agregar_categoria(item.get("tipo", ""), item.get("categoria", ""))
+    for item in leer_planificaciones():
+        agregar_categoria(item.get("tipo", ""), item.get("categoria", ""))
 
     return {
         tipo: sorted(valores.values(), key=str.lower)
@@ -445,6 +465,95 @@ def escribir_deudas(deudas):
         writer.writeheader()
         for item in deudas:
             writer.writerow({columna: item.get(columna, "") for columna in DEUDA_COLUMNAS})
+
+
+def leer_planificaciones():
+    if usar_base_datos():
+        asegurar_db()
+        with conectar_db() as conexion:
+            with conexion.cursor() as cursor:
+                cursor.execute(
+                    "SELECT fecha, tipo, categoria, descripcion, monto FROM planificacion ORDER BY id"
+                )
+                planificaciones = []
+                for indice, fila in enumerate(cursor.fetchall()):
+                    item = {columna: fila.get(columna, "") for columna in PLANIFICACION_COLUMNAS}
+                    item["monto"] = float(item["monto"] or 0)
+                    item["id"] = indice
+                    planificaciones.append(item)
+                return planificaciones
+
+    asegurar_csv()
+    with PLANIFICACION_PATH.open(newline="", encoding="utf-8") as archivo:
+        reader = csv.DictReader(archivo)
+        planificaciones = []
+        for indice, fila in enumerate(reader):
+            item = {columna: fila.get(columna, "") for columna in PLANIFICACION_COLUMNAS}
+            try:
+                item["monto"] = float(item["monto"] or 0)
+            except ValueError:
+                item["monto"] = 0
+            item["id"] = indice
+            planificaciones.append(item)
+    return planificaciones
+
+
+def escribir_planificaciones(planificaciones):
+    if usar_base_datos():
+        asegurar_db()
+        with conectar_db() as conexion:
+            with conexion.cursor() as cursor:
+                cursor.execute("TRUNCATE planificacion RESTART IDENTITY")
+                cursor.executemany(
+                    """
+                    INSERT INTO planificacion (fecha, tipo, categoria, descripcion, monto)
+                    VALUES (%s, %s, %s, %s, %s)
+                    """,
+                    [
+                        (
+                            item.get("fecha", ""),
+                            item.get("tipo", ""),
+                            item.get("categoria", ""),
+                            item.get("descripcion", ""),
+                            float(item.get("monto") or 0),
+                        )
+                        for item in planificaciones
+                    ],
+                )
+        return
+
+    asegurar_csv()
+    with PLANIFICACION_PATH.open("w", newline="", encoding="utf-8") as archivo:
+        writer = csv.DictWriter(archivo, fieldnames=PLANIFICACION_COLUMNAS)
+        writer.writeheader()
+        for item in planificaciones:
+            writer.writerow({columna: item.get(columna, "") for columna in PLANIFICACION_COLUMNAS})
+
+
+def guardar_planificacion(item):
+    if usar_base_datos():
+        asegurar_db()
+        with conectar_db() as conexion:
+            with conexion.cursor() as cursor:
+                cursor.execute(
+                    """
+                    INSERT INTO planificacion (fecha, tipo, categoria, descripcion, monto)
+                    VALUES (%s, %s, %s, %s, %s)
+                    """,
+                    (
+                        item.get("fecha", ""),
+                        item.get("tipo", ""),
+                        item.get("categoria", ""),
+                        item.get("descripcion", ""),
+                        float(item.get("monto") or 0),
+                    ),
+                )
+        return
+
+    asegurar_csv()
+    with PLANIFICACION_PATH.open("a", newline="", encoding="utf-8") as archivo:
+        writer = csv.DictWriter(archivo, fieldnames=PLANIFICACION_COLUMNAS)
+        writer.writerow(item)
 
 
 def periodo_actual():
@@ -925,9 +1034,98 @@ def calcular_dashboard(filtrar_periodo=False):
     }
 
 
+def calcular_planificacion():
+    datos = calcular_dashboard(filtrar_periodo=True)
+    periodo_inicio = datos["periodo_inicio"]
+    periodo_fin = datos["periodo_fin"]
+    periodo = periodo_actual()
+    movimientos = datos["movimientos"]
+
+    automatizaciones = sincronizar_automatizaciones_confirmadas()
+    fijos_pendientes = []
+    for item in automatizaciones:
+        if not item["activo"] or esta_anulada(item, periodo):
+            continue
+        if item.get("ultimo_confirmado") == periodo:
+            continue
+        existe_movimiento = any(
+            (fecha := fecha_movimiento(movimiento.get("fecha", "")))
+            and periodo_inicio <= fecha <= periodo_fin
+            and movimiento_coincide_automatizacion(movimiento, item)
+            for movimiento in movimientos
+        )
+        if not existe_movimiento:
+            fijos_pendientes.append(item)
+
+    planificaciones = []
+    for item in leer_planificaciones():
+        fecha = fecha_movimiento(item.get("fecha", ""))
+        if fecha and periodo_inicio <= fecha <= periodo_fin:
+            planificaciones.append(item)
+
+    fijos_gastos = sum(item["monto"] for item in fijos_pendientes if item["tipo"] == "Gasto")
+    fijos_ahorros = sum(item["monto"] for item in fijos_pendientes if item["tipo"] == "Ahorro")
+    plan_ingresos = sum(item["monto"] for item in planificaciones if item["tipo"] == "Ingreso")
+    plan_gastos = sum(item["monto"] for item in planificaciones if item["tipo"] == "Gasto")
+    plan_ahorros = sum(item["monto"] for item in planificaciones if item["tipo"] == "Ahorro")
+
+    ingresos = datos["ingresos"] + plan_ingresos
+    gastos = datos["gastos"] + fijos_gastos + plan_gastos
+    ahorros = datos["ahorros"] + fijos_ahorros + plan_ahorros
+    disponible = ingresos - gastos - ahorros
+
+    return {
+        "periodo_inicio": periodo_inicio,
+        "periodo_fin": periodo_fin,
+        "ingresos_base": datos["ingresos"],
+        "gastos_base": datos["gastos"],
+        "ahorros_base": datos["ahorros"],
+        "fijos_pendientes": fijos_pendientes,
+        "fijos_gastos": fijos_gastos,
+        "fijos_ahorros": fijos_ahorros,
+        "planificaciones": planificaciones,
+        "plan_ingresos": plan_ingresos,
+        "plan_gastos": plan_gastos,
+        "plan_ahorros": plan_ahorros,
+        "ingresos": ingresos,
+        "gastos": gastos,
+        "ahorros": ahorros,
+        "disponible": disponible,
+    }
+
+
 @app.route("/")
 def index():
     return render_template("index.html", **calcular_dashboard(filtrar_periodo=True))
+
+
+@app.route("/planificacion", methods=["GET", "POST"])
+def planificacion():
+    if request.method == "POST":
+        tipo = request.form.get("tipo", "Gasto")
+        if tipo not in TIPOS_VALIDOS:
+            tipo = "Gasto"
+        guardar_planificacion(
+            {
+                "fecha": request.form.get("fecha", ""),
+                "tipo": tipo,
+                "categoria": request.form.get("categoria", "").strip(),
+                "descripcion": request.form.get("descripcion", "").strip(),
+                "monto": float(request.form.get("monto", 0) or 0),
+            }
+        )
+        return redirect(url_for("planificacion"))
+
+    return render_template("planificacion.html", **calcular_planificacion())
+
+
+@app.route("/planificacion/eliminar/<int:planificacion_id>", methods=["POST"])
+def eliminar_planificacion(planificacion_id):
+    planificaciones = leer_planificaciones()
+    if 0 <= planificacion_id < len(planificaciones):
+        planificaciones.pop(planificacion_id)
+        escribir_planificaciones(planificaciones)
+    return redirect(url_for("planificacion"))
 
 
 @app.route("/agregar", methods=["GET", "POST"])

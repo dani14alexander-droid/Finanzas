@@ -12,12 +12,10 @@
         <a class="brand" href="{{ url_for('index') }}">Finanzas</a>
       <nav>
         <a href="{{ url_for('index') }}">Dashboard</a>
+        <a href="{{ url_for('planificacion') }}">Planificacion</a>
         <a href="{{ url_for('historico') }}">Historico</a>
         <a href="{{ url_for('automatizacion') }}">Gastos fijos</a>
         <a href="{{ url_for('deudas') }}">Deudas</a>
-        <a href="{{ url_for('agregar_por_tipo', tipo='ingreso') }}">Ingreso</a>
-        <a href="{{ url_for('agregar_por_tipo', tipo='gasto') }}">Gasto</a>
-        <a href="{{ url_for('agregar_por_tipo', tipo='ahorro') }}">Ahorro</a>
       </nav>
     </header>
 
