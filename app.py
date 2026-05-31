@@ -55,6 +55,20 @@ PLANIFICACION_COLUMNAS = ["fecha", "tipo", "categoria", "descripcion", "monto"]
 TIPOS_VALIDOS = {"Ingreso", "Gasto", "Ahorro"}
 TIPOS_AUTOMATIZACION = {"Gasto", "Ahorro"}
 TIPOS_DEUDA = {"Me deben", "Debo"}
+MESES = [
+    "Enero",
+    "Febrero",
+    "Marzo",
+    "Abril",
+    "Mayo",
+    "Junio",
+    "Julio",
+    "Agosto",
+    "Septiembre",
+    "Octubre",
+    "Noviembre",
+    "Diciembre",
+]
 
 
 def cargar_entorno_local():
@@ -557,8 +571,7 @@ def guardar_planificacion(item):
 
 
 def periodo_actual():
-    hoy = date.today()
-    return f"{hoy.year}-{hoy.month:02d}"
+    return clave_ciclo(date.today())
 
 
 def proxima_fecha_mensual(dia_mes):
@@ -579,6 +592,10 @@ def penultimo_dia_habil_mes(hoy=None):
     if len(dias_habiles) >= 2:
         return dias_habiles[-2].isoformat()
     return dias_habiles[-1].isoformat()
+
+
+def fecha_sueldo_esperada(hoy=None):
+    return fecha_movimiento(penultimo_dia_habil_mes(hoy))
 
 
 def sumar_meses(fecha, meses):
@@ -606,6 +623,168 @@ def ultimo_sueldo(movimientos):
     if not sueldos:
         return None
     return max(sueldos, key=lambda item: item[0])
+
+
+def ultimo_sueldo_antes_de(movimientos, fecha_limite):
+    sueldos = [
+        (fecha, item)
+        for item in movimientos
+        if es_sueldo(item)
+        and (fecha := fecha_movimiento(item["fecha"]))
+        and fecha < fecha_limite
+    ]
+    if not sueldos:
+        return None
+    return max(sueldos, key=lambda item: item[0])
+
+
+def clave_ciclo(fecha, movimientos=None):
+    movimientos = movimientos if movimientos is not None else leer_movimientos()
+    sueldos = [
+        fecha_sueldo
+        for item in movimientos
+        if es_sueldo(item)
+        and (fecha_sueldo := fecha_movimiento(item.get("fecha", "")))
+        and fecha_sueldo <= fecha
+    ]
+    if sueldos:
+        return max(sueldos).isoformat()
+    return f"{fecha.year}-{fecha.month:02d}"
+
+
+def periodo_movimiento_ciclo(valor, movimientos=None):
+    fecha = fecha_movimiento(valor)
+    if not fecha:
+        return ""
+    return clave_ciclo(fecha, movimientos)
+
+
+def saldo_antes_de(movimientos, fecha_inicio):
+    saldo = 0
+    for item in movimientos:
+        fecha = fecha_movimiento(item.get("fecha", ""))
+        if not fecha or fecha >= fecha_inicio:
+            continue
+        monto = float(item.get("monto") or 0)
+        if item.get("tipo") == "Ingreso":
+            saldo += monto
+        elif item.get("tipo") in {"Gasto", "Ahorro"}:
+            saldo -= monto
+    return saldo
+
+
+def etiqueta_ciclo(clave):
+    fecha = fecha_movimiento(clave)
+    if fecha:
+        proximo_mes = sumar_meses(fecha, 1)
+        fecha_fin = fecha_movimiento(penultimo_dia_habil_mes(proximo_mes)) - timedelta(days=1)
+        mes, anio = mes_dominante(fecha, fecha_fin)
+        return f"Ciclo {MESES[mes - 1]} {anio}"
+    try:
+        anio, mes = clave.split("-")[:2]
+        return f"Ciclo {MESES[int(mes) - 1]} {anio}"
+    except (ValueError, IndexError):
+        return "Ciclo actual"
+
+
+def mes_dominante(inicio, fin):
+    dias_por_mes = {}
+    actual = inicio
+    while actual <= fin:
+        clave = (actual.year, actual.month)
+        dias_por_mes[clave] = dias_por_mes.get(clave, 0) + 1
+        actual += timedelta(days=1)
+    anio, mes = max(dias_por_mes, key=lambda clave: dias_por_mes[clave])
+    return mes, anio
+
+
+def rango_ciclo(clave, movimientos):
+    fecha_inicio = fecha_movimiento(clave)
+    if fecha_inicio:
+        proximo_mes = sumar_meses(fecha_inicio, 1)
+        fecha_fin = fecha_movimiento(penultimo_dia_habil_mes(proximo_mes))
+        return fecha_inicio, fecha_fin - timedelta(days=1)
+
+    try:
+        anio, mes = [int(parte) for parte in clave.split("-")[:2]]
+    except (ValueError, IndexError):
+        return rango_dashboard(date.today(), movimientos)
+
+    inicio = date(anio, mes, 1)
+    fin = date(anio, mes, calendar.monthrange(anio, mes)[1])
+    return inicio, fin
+
+
+def opciones_ciclos(movimientos):
+    claves = {
+        fecha.isoformat()
+        for item in movimientos
+        if es_sueldo(item) and (fecha := fecha_movimiento(item.get("fecha", "")))
+    }
+    claves.add(clave_ciclo(date.today(), movimientos))
+
+    if not claves:
+        claves = {
+            f"{fecha.year}-{fecha.month:02d}"
+            for item in movimientos
+            if (fecha := fecha_movimiento(item.get("fecha", "")))
+        }
+
+    return [
+        {"valor": clave, "etiqueta": etiqueta_ciclo(clave)}
+        for clave in sorted(claves, reverse=True)
+    ]
+
+
+def movimientos_de_ciclo(movimientos, clave):
+    inicio, fin = rango_ciclo(clave, movimientos)
+    items = [
+        item
+        for item in movimientos
+        if (fecha := fecha_movimiento(item.get("fecha", ""))) and inicio <= fecha <= fin
+    ]
+    saldo_anterior = saldo_antes_de(movimientos, inicio)
+    if abs(saldo_anterior) >= 0.01:
+        items.append(
+            {
+                "fecha": inicio.isoformat(),
+                "tipo": "Ingreso",
+                "categoria": "Saldo anterior",
+                "descripcion": "Arrastre del ciclo anterior",
+                "monto": saldo_anterior,
+                "id": "",
+            }
+        )
+    return sorted(items, key=lambda item: item["fecha"], reverse=True), inicio, fin
+
+
+def asegurar_sueldo_automatico(hoy=None):
+    hoy = hoy or date.today()
+    fecha_sueldo = fecha_sueldo_esperada(hoy)
+    if not fecha_sueldo or hoy < fecha_sueldo:
+        return False
+
+    movimientos = leer_movimientos()
+    if any(
+        es_sueldo(item) and fecha_movimiento(item.get("fecha", "")) == fecha_sueldo
+        for item in movimientos
+    ):
+        return False
+
+    sueldo_anterior = ultimo_sueldo_antes_de(movimientos, fecha_sueldo)
+    if not sueldo_anterior:
+        return False
+
+    guardar_movimiento(
+        {
+            "fecha": fecha_sueldo.isoformat(),
+            "tipo": "Ingreso",
+            "categoria": "Sueldo",
+            "descripcion": "Sueldo",
+            "monto": sueldo_anterior[1]["monto"],
+        }
+    )
+    return True
 
 
 def moneda(valor):
@@ -755,7 +934,7 @@ def movimiento_coincide_automatizacion(movimiento, automatizacion):
 
 
 def actualizar_automatizaciones_por_movimiento(movimiento, movimientos_actuales):
-    periodo = periodo_movimiento(movimiento.get("fecha", ""))
+    periodo = periodo_movimiento_ciclo(movimiento.get("fecha", ""), movimientos_actuales)
     if not periodo:
         return
 
@@ -767,7 +946,7 @@ def actualizar_automatizaciones_por_movimiento(movimiento, movimientos_actuales)
         if not movimiento_coincide_automatizacion(movimiento, item):
             continue
         existe_movimiento = any(
-            periodo_movimiento(actual.get("fecha", "")) == periodo
+            periodo_movimiento_ciclo(actual.get("fecha", ""), movimientos_actuales) == periodo
             and movimiento_coincide_automatizacion(actual, item)
             for actual in movimientos_actuales
         )
@@ -781,16 +960,32 @@ def actualizar_automatizaciones_por_movimiento(movimiento, movimientos_actuales)
 
 
 def sincronizar_automatizaciones_confirmadas():
+    asegurar_sueldo_automatico()
     automatizaciones = leer_automatizaciones()
     movimientos = leer_movimientos()
+    periodo = periodo_actual()
     hubo_cambios = False
 
     for item in automatizaciones:
-        periodo = item.get("ultimo_confirmado", "")
-        if not periodo:
+        if esta_anulada(item, periodo):
+            continue
+
+        existe_en_periodo_actual = any(
+            periodo_movimiento_ciclo(movimiento.get("fecha", ""), movimientos) == periodo
+            and movimiento_coincide_automatizacion(movimiento, item)
+            for movimiento in movimientos
+        )
+        if existe_en_periodo_actual and item.get("ultimo_confirmado") != periodo:
+            item["ultimo_confirmado"] = periodo
+            item["ticket_ultimo"] = ""
+            hubo_cambios = True
+            continue
+
+        periodo_confirmado = item.get("ultimo_confirmado", "")
+        if not periodo_confirmado:
             continue
         existe_movimiento = any(
-            periodo_movimiento(movimiento.get("fecha", "")) == periodo
+            periodo_movimiento_ciclo(movimiento.get("fecha", ""), movimientos) == periodo_confirmado
             and movimiento_coincide_automatizacion(movimiento, item)
             for movimiento in movimientos
         )
@@ -994,17 +1189,31 @@ def resumen_historico(vista):
 
 def calcular_dashboard(filtrar_periodo=False):
     hoy = date.today()
+    asegurar_sueldo_automatico(hoy)
     movimientos = leer_movimientos()
     periodo_inicio = None
     periodo_fin = None
+    saldo_anterior = 0
     if filtrar_periodo:
         periodo_inicio, periodo_fin = rango_dashboard(hoy, movimientos)
+        saldo_anterior = saldo_antes_de(movimientos, periodo_inicio)
         movimientos = [
             item
             for item in movimientos
             if (fecha := fecha_movimiento(item["fecha"]))
             and periodo_inicio <= fecha <= periodo_fin
         ]
+        if abs(saldo_anterior) >= 0.01:
+            movimientos.append(
+                {
+                    "fecha": periodo_inicio.isoformat(),
+                    "tipo": "Ingreso",
+                    "categoria": "Saldo anterior",
+                    "descripcion": "Arrastre del ciclo anterior",
+                    "monto": saldo_anterior,
+                    "id": "",
+                }
+            )
     semanas, dias_restantes, hoy = calcular_semanas_restantes(hoy, periodo_fin)
     movimientos = sorted(movimientos, key=lambda item: item["fecha"], reverse=True)
     ingresos_lista = [item for item in movimientos if item["tipo"] == "Ingreso"]
@@ -1278,6 +1487,7 @@ def automatizacion():
         escribir_automatizaciones(automatizaciones)
         return redirect(url_for("automatizacion"))
 
+    asegurar_sueldo_automatico()
     periodo = periodo_actual()
     automatizaciones = sorted(
         sincronizar_automatizaciones_confirmadas(),
@@ -1358,7 +1568,7 @@ def confirmar_automatizacion(automatizacion_id):
             "monto": item["monto"],
         }
     )
-    item["ultimo_confirmado"] = periodo_movimiento(fecha) or periodo_actual()
+    item["ultimo_confirmado"] = periodo_movimiento_ciclo(fecha) or periodo_actual()
     item["ticket_ultimo"] = ""
     item["ultimo_anulado"] = ""
     item["razon_anulado"] = ""
@@ -1621,10 +1831,25 @@ def historico():
 
 @app.route("/resumen")
 def resumen():
-    datos = calcular_dashboard()
-    movimientos = datos["movimientos"]
+    asegurar_sueldo_automatico()
+    todos_movimientos = leer_movimientos()
+    ciclos = opciones_ciclos(todos_movimientos)
+    ciclo_seleccionado = request.args.get("ciclo") or (
+        ciclos[0]["valor"] if ciclos else clave_ciclo(date.today(), todos_movimientos)
+    )
+    if ciclos and ciclo_seleccionado not in {item["valor"] for item in ciclos}:
+        ciclo_seleccionado = ciclos[0]["valor"]
+    movimientos, periodo_inicio, periodo_fin = movimientos_de_ciclo(
+        todos_movimientos, ciclo_seleccionado
+    )
     busqueda = request.args.get("q", "").strip()
     filtro_tipo = request.args.get("tipo", "Todos")
+    semanas, _, _ = calcular_semanas_restantes(date.today(), periodo_fin)
+    ingresos = sum(item["monto"] for item in movimientos if item["tipo"] == "Ingreso")
+    gastos = sum(item["monto"] for item in movimientos if item["tipo"] == "Gasto")
+    ahorros = sum(item["monto"] for item in movimientos if item["tipo"] == "Ahorro")
+    disponible = ingresos - gastos - ahorros
+    cuota_semanal = disponible / semanas if semanas > 0 else 0
     totales = {}
     for item in movimientos:
         clave = (item["tipo"], item["categoria"])
@@ -1657,12 +1882,12 @@ def resumen():
         for item in movimientos
         if item["tipo"] == "Gasto" and "deuda" in item["categoria"].lower()
     )
-    costos_sin_deuda = max(datos["gastos"] - deuda, 0)
-    disponible_ingresos = max(datos["ingresos"] - datos["gastos"] - datos["ahorros"], 0)
+    costos_sin_deuda = max(gastos - deuda, 0)
+    disponible_ingresos = max(ingresos - gastos - ahorros, 0)
     distribucion_ingresos = [
         {"categoria": "Gastos", "monto": costos_sin_deuda, "color": "#1f6feb"},
         {"categoria": "Deuda", "monto": deuda, "color": "#c2410c"},
-        {"categoria": "Ahorro", "monto": datos["ahorros"], "color": "#7c3aed"},
+        {"categoria": "Ahorro", "monto": ahorros, "color": "#7c3aed"},
         {"categoria": "Disponible", "monto": disponible_ingresos, "color": "#15803d"},
     ]
     distribucion_ingresos = [item for item in distribucion_ingresos if item["monto"] > 0]
@@ -1694,12 +1919,16 @@ def resumen():
 
     return render_template(
         "resumen.html",
-        ingresos=datos["ingresos"],
-        gastos=datos["gastos"],
-        ahorros=datos["ahorros"],
-        balance=datos["balance"],
-        disponible=datos["disponible"],
-        cuota_semanal=datos["cuota_semanal"],
+        ingresos=ingresos,
+        gastos=gastos,
+        ahorros=ahorros,
+        balance=ingresos - gastos,
+        disponible=disponible,
+        cuota_semanal=cuota_semanal,
+        periodo_inicio=periodo_inicio,
+        periodo_fin=periodo_fin,
+        ciclos=ciclos,
+        ciclo_seleccionado=ciclo_seleccionado,
         por_categoria=por_categoria,
         gastos_por_categoria=gastos_por_categoria,
         torta_gastos=torta_gastos,
