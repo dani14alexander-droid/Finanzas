@@ -687,6 +687,15 @@ def etiqueta_ciclo(clave):
         return "Ciclo actual"
 
 
+def fecha_corta(valor):
+    if hasattr(valor, "strftime"):
+        return valor.strftime("%d-%m-%Y")
+    fecha = fecha_movimiento(str(valor))
+    if fecha:
+        return fecha.strftime("%d-%m-%Y")
+    return ""
+
+
 def mes_dominante(inicio, fin):
     dias_por_mes = {}
     actual = inicio
@@ -792,6 +801,7 @@ def moneda(valor):
 
 
 app.jinja_env.filters["moneda"] = moneda
+app.jinja_env.filters["fecha_corta"] = fecha_corta
 
 
 def tooltip_operaciones(items, titulo):
@@ -1831,7 +1841,6 @@ def historico():
 
 @app.route("/resumen")
 def resumen():
-    asegurar_sueldo_automatico()
     todos_movimientos = leer_movimientos()
     ciclos = opciones_ciclos(todos_movimientos)
     ciclo_seleccionado = request.args.get("ciclo") or (
