@@ -1839,6 +1839,10 @@ def resumen():
     )
     if ciclos and ciclo_seleccionado not in {item["valor"] for item in ciclos}:
         ciclo_seleccionado = ciclos[0]["valor"]
+    ciclo_etiqueta = next(
+        (item["etiqueta"] for item in ciclos if item["valor"] == ciclo_seleccionado),
+        etiqueta_ciclo(ciclo_seleccionado),
+    )
     movimientos, periodo_inicio, periodo_fin = movimientos_de_ciclo(
         todos_movimientos, ciclo_seleccionado
     )
@@ -1929,6 +1933,7 @@ def resumen():
         periodo_fin=periodo_fin,
         ciclos=ciclos,
         ciclo_seleccionado=ciclo_seleccionado,
+        ciclo_etiqueta=ciclo_etiqueta,
         por_categoria=por_categoria,
         gastos_por_categoria=gastos_por_categoria,
         torta_gastos=torta_gastos,
