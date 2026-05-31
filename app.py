@@ -199,7 +199,7 @@ def leer_movimientos():
                 )
                 movimientos = []
                 for indice, fila in enumerate(cursor.fetchall()):
-                    movimiento = {columna: fila.get(columna, "") for columna in COLUMNAS}
+                    movimiento = {columna: fila.get(columna) or "" for columna in COLUMNAS}
                     movimiento["monto"] = float(movimiento["monto"] or 0)
                     movimiento["id"] = indice
                     movimientos.append(movimiento)
@@ -293,7 +293,7 @@ def leer_automatizaciones():
                 )
                 automatizaciones = []
                 for indice, fila in enumerate(cursor.fetchall()):
-                    item = {columna: fila.get(columna, "") for columna in AUTOMATIZACION_COLUMNAS}
+                    item = {columna: fila.get(columna) or "" for columna in AUTOMATIZACION_COLUMNAS}
                     item["monto"] = float(item["monto"] or 0)
                     item["dia_mes"] = int(item["dia_mes"] or 1)
                     item["activo"] = bool(item["activo"])
@@ -377,7 +377,7 @@ def leer_deudas():
                 )
                 deudas = []
                 for indice, fila in enumerate(cursor.fetchall()):
-                    item = {columna: fila.get(columna, "") for columna in DEUDA_COLUMNAS}
+                    item = {columna: fila.get(columna) or "" for columna in DEUDA_COLUMNAS}
                     item["monto"] = float(item["monto"] or 0)
                     item["id"] = indice
                     deudas.append(item)
@@ -491,7 +491,7 @@ def leer_planificaciones():
                 )
                 planificaciones = []
                 for indice, fila in enumerate(cursor.fetchall()):
-                    item = {columna: fila.get(columna, "") for columna in PLANIFICACION_COLUMNAS}
+                    item = {columna: fila.get(columna) or "" for columna in PLANIFICACION_COLUMNAS}
                     item["monto"] = float(item["monto"] or 0)
                     item["id"] = indice
                     planificaciones.append(item)
@@ -1884,7 +1884,7 @@ def resumen():
     deuda = sum(
         item["monto"]
         for item in movimientos
-        if item["tipo"] == "Gasto" and "deuda" in item["categoria"].lower()
+        if item.get("tipo") == "Gasto" and "deuda" in (item.get("categoria") or "").lower()
     )
     costos_sin_deuda = max(gastos - deuda, 0)
     disponible_ingresos = max(ingresos - gastos - ahorros, 0)
@@ -1912,11 +1912,11 @@ def resumen():
             if texto
             in " ".join(
                 [
-                    item["fecha"],
-                    item["tipo"],
-                    item["categoria"],
-                    item["descripcion"],
-                    str(item["monto"]),
+                    item.get("fecha", ""),
+                    item.get("tipo", ""),
+                    item.get("categoria", ""),
+                    item.get("descripcion", ""),
+                    str(item.get("monto", "")),
                 ]
             ).lower()
         ]
