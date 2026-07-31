@@ -20,6 +20,26 @@
     </header>
 
     <main class="container">
+      <section class="dashboard-head">
+        <div>
+          <p class="eyebrow">Resumen por ciclo</p>
+          <h1>{{ ciclo_etiqueta }}</h1>
+        </div>
+        <form class="date-card auto-filter" method="get" action="{{ url_for('resumen') }}">
+          <label>
+            Ciclo
+            <select name="ciclo">
+              {% for ciclo in ciclos %}
+                <option value="{{ ciclo.valor }}" {{ 'selected' if ciclo.valor == ciclo_seleccionado else '' }}>
+                  {{ ciclo.etiqueta }}
+                </option>
+              {% endfor %}
+            </select>
+          </label>
+          <small>{{ periodo_inicio|fecha_corta }} al {{ periodo_fin|fecha_corta }}</small>
+        </form>
+      </section>
+
       <section class="stats stats-wide">
         <article>
           <span>Ingresos</span>
@@ -131,6 +151,7 @@
         </div>
 
         <form class="filter-bar auto-filter" method="get" action="{{ url_for('resumen') }}#movimientos">
+          <input type="hidden" name="ciclo" value="{{ ciclo_seleccionado }}">
           <label>
             Buscar
             <input type="search" name="q" value="{{ busqueda }}" placeholder="Categoria, descripcion, monto...">
@@ -186,7 +207,11 @@
                       {{ item.monto|moneda }}
                     </td>
                     <td>
-                      <a class="table-action" href="{{ url_for('editar', movimiento_id=item.id) }}">Editar</a>
+                      {% if item.id != "" %}
+                        <a class="table-action" href="{{ url_for('editar', movimiento_id=item.id) }}">Editar</a>
+                      {% else %}
+                        <span class="hint-inline">Automatico</span>
+                      {% endif %}
                     </td>
                   </tr>
                 {% endfor %}

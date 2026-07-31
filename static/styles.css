@@ -21,6 +21,7 @@
 
 body {
   margin: 0;
+  min-width: 0;
   background: var(--bg);
   color: var(--text);
   font-family: Arial, Helvetica, sans-serif;
@@ -890,6 +891,8 @@ label {
 
 input,
 select {
+  max-width: 100%;
+  width: 100%;
   border: 1px solid var(--line);
   border-radius: 6px;
   color: var(--text);
@@ -927,7 +930,53 @@ select:focus {
 }
 
 @media (max-width: 720px) {
-  .topbar,
+  body {
+    overflow-x: hidden;
+  }
+
+  .topbar {
+    align-items: stretch;
+    gap: 10px;
+    padding: 12px 16px 0;
+    position: sticky;
+    top: 0;
+    z-index: 20;
+  }
+
+  .brand {
+    font-size: 1.1rem;
+  }
+
+  nav {
+    flex-wrap: nowrap;
+    gap: 4px;
+    margin: 0 -16px;
+    overflow-x: auto;
+    padding: 0 16px 10px;
+    scrollbar-width: none;
+    white-space: nowrap;
+  }
+
+  nav::-webkit-scrollbar {
+    display: none;
+  }
+
+  nav a {
+    border-radius: 6px;
+    flex: 0 0 auto;
+    font-size: 0.85rem;
+    padding: 8px 10px;
+  }
+
+  nav a:active {
+    background: var(--soft);
+    color: var(--primary);
+  }
+
+  .container {
+    padding: 20px 12px 32px;
+  }
+
   .panel-header,
   .actions,
   .dashboard-head {
@@ -935,9 +984,63 @@ select:focus {
     flex-direction: column;
   }
 
+  .dashboard-head {
+    gap: 12px;
+    margin-bottom: 16px;
+  }
+
+  .dashboard-head h1 {
+    font-size: 1.65rem;
+  }
+
+  .date-card {
+    min-width: 0;
+    width: 100%;
+  }
+
   .stats,
   .stats-wide,
-  .fixed-stats,
+  .fixed-stats {
+    gap: 10px;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    margin-bottom: 16px;
+  }
+
+  .stats article {
+    min-width: 0;
+    padding: 14px 12px;
+  }
+
+  .stats span {
+    font-size: 0.78rem;
+    line-height: 1.25;
+    margin-bottom: 6px;
+  }
+
+  .stats strong {
+    display: block;
+    font-size: 1.15rem;
+    overflow-wrap: anywhere;
+  }
+
+  .stats article:last-child:nth-child(odd) {
+    grid-column: 1 / -1;
+  }
+
+  .panel {
+    padding: 16px;
+  }
+
+  .panel-header {
+    gap: 10px;
+  }
+
+  .panel-header h1,
+  .panel-header h2 {
+    font-size: 1.1rem;
+    margin: 0;
+  }
+
   .split,
   .columns,
   .two-columns,
@@ -951,7 +1054,134 @@ select:focus {
     grid-template-columns: 1fr;
   }
 
-  nav {
-    justify-content: flex-start;
+  .big-number {
+    font-size: 2rem;
+    overflow-wrap: anywhere;
+  }
+
+  .charts-grid {
+    margin-top: 12px;
+  }
+
+  .chart-section {
+    padding: 12px;
+  }
+
+  .pie-chart {
+    max-width: 230px;
+    min-height: 230px;
+  }
+
+  .pie-chart canvas {
+    height: 230px !important;
+    max-width: 100% !important;
+    width: 230px !important;
+  }
+
+  .chart-legend ul {
+    gap: 8px 10px;
+  }
+
+  .chart-canvas-wrap,
+  .chart-canvas-wrap canvas {
+    height: 260px !important;
+  }
+
+  .table-wrap {
+    margin-left: -16px;
+    margin-right: -16px;
+    padding: 0 16px 8px;
+    scrollbar-color: var(--line) transparent;
+  }
+
+  table {
+    font-size: 0.88rem;
+  }
+
+  th,
+  td {
+    padding: 12px 8px;
+  }
+
+  .movement-table-wrap {
+    padding-top: 44px;
+  }
+
+  .add-row-button {
+    right: 16px;
+    top: 0;
+  }
+
+  .automation-scroll {
+    max-height: none;
+    overflow: visible;
+    padding-right: 0;
+  }
+
+  .automation-actions {
+    justify-content: stretch;
+  }
+
+  .automation-actions > *,
+  .automation-actions form,
+  .automation-actions form button,
+  .debt-item button {
+    flex: 1 1 auto;
+  }
+
+  .actions {
+    gap: 8px;
+  }
+
+  .actions > *,
+  .actions button,
+  .actions .button,
+  .actions .link-button,
+  .salary-form button {
+    width: 100%;
+  }
+
+  .bar-detail li {
+    align-items: start;
+    grid-template-columns: 1fr auto;
+  }
+
+  .bar-detail li span {
+    grid-column: 1 / -1;
+  }
+
+  .movement-list li {
+    align-items: start;
+  }
+
+  .movement-list div {
+    min-width: 0;
+  }
+
+  .movement-list strong,
+  .movement-list span {
+    overflow-wrap: anywhere;
+  }
+}
+
+@media (max-width: 380px) {
+  .stats,
+  .stats-wide,
+  .fixed-stats {
+    grid-template-columns: 1fr;
+  }
+
+  .stats article:last-child:nth-child(odd) {
+    grid-column: auto;
+  }
+
+  .pie-chart {
+    max-width: 210px;
+    min-height: 210px;
+  }
+
+  .pie-chart canvas {
+    height: 210px !important;
+    width: 210px !important;
   }
 }
