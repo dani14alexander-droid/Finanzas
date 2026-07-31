@@ -732,6 +732,15 @@ def opciones_ciclos(movimientos):
     }
     claves.add(clave_ciclo(date.today(), movimientos))
 
+    # Include missing salary periods so months without activity remain visible.
+    fechas_ciclo = sorted(fecha_movimiento(clave) for clave in claves if fecha_movimiento(clave))
+    if fechas_ciclo:
+        cursor = date(fechas_ciclo[0].year, fechas_ciclo[0].month, 1)
+        ultimo = date(fechas_ciclo[-1].year, fechas_ciclo[-1].month, 1)
+        while cursor <= ultimo:
+            claves.add(penultimo_dia_habil_mes(cursor))
+            cursor = sumar_meses(cursor, 1)
+
     if not claves:
         claves = {
             f"{fecha.year}-{fecha.month:02d}"
@@ -739,10 +748,24 @@ def opciones_ciclos(movimientos):
             if (fecha := fecha_movimiento(item.get("fecha", "")))
         }
 
-    return [
-        {"valor": clave, "etiqueta": etiqueta_ciclo(clave)}
-        for clave in sorted(claves, reverse=True)
-    ]
+    opciones = []
+    for clave in sorted(claves, reverse=True):
+        inicio, fin = rango_ciclo(clave, movimientos)
+        tiene_informacion = any(
+            (fecha := fecha_movimiento(item.get("fecha", ""))) and inicio <= fecha <= fin
+            for item in movimientos
+        )
+        etiqueta = etiqueta_ciclo(clave)
+        if not tiene_informacion:
+            etiqueta = f"{etiqueta} - Sin informacion"
+        opciones.append(
+            {
+                "valor": clave,
+                "etiqueta": etiqueta,
+                "tiene_informacion": tiene_informacion,
+            }
+        )
+    return opciones
 
 
 def movimientos_de_ciclo(movimientos, clave):
@@ -752,7 +775,19 @@ def movimientos_de_ciclo(movimientos, clave):
         for item in movimientos
         if (fecha := fecha_movimiento(item.get("fecha", ""))) and inicio <= fecha <= fin
     ]
-    saldo_anterior = saldo_antes_de(movimientos, inicio)
+    if not items:
+        return [], inicio, fin
+    mes_anterior = sumar_meses(date(inicio.year, inicio.month, 1), -1)
+    inicio_anterior = fecha_movimiento(penultimo_dia_habil_mes(mes_anterior))
+    fin_anterior = inicio - timedelta(days=1)
+    ciclo_anterior_tiene_informacion = any(
+        (fecha := fecha_movimiento(item.get("fecha", "")))
+        and inicio_anterior <= fecha <= fin_anterior
+        for item in movimientos
+    )
+    saldo_anterior = (
+        saldo_antes_de(movimientos, inicio) if ciclo_anterior_tiene_informacion else 0
+    )
     if abs(saldo_anterior) >= 0.01:
         items.append(
             {
@@ -1852,6 +1887,14 @@ def resumen():
         (item["etiqueta"] for item in ciclos if item["valor"] == ciclo_seleccionado),
         etiqueta_ciclo(ciclo_seleccionado),
     )
+    ciclo_tiene_informacion = next(
+        (
+            item["tiene_informacion"]
+            for item in ciclos
+            if item["valor"] == ciclo_seleccionado
+        ),
+        True,
+    )
     movimientos, periodo_inicio, periodo_fin = movimientos_de_ciclo(
         todos_movimientos, ciclo_seleccionado
     )
@@ -1943,6 +1986,7 @@ def resumen():
         ciclos=ciclos,
         ciclo_seleccionado=ciclo_seleccionado,
         ciclo_etiqueta=ciclo_etiqueta,
+        ciclo_tiene_informacion=ciclo_tiene_informacion,
         por_categoria=por_categoria,
         gastos_por_categoria=gastos_por_categoria,
         torta_gastos=torta_gastos,

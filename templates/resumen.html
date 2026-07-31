@@ -24,6 +24,9 @@
         <div>
           <p class="eyebrow">Resumen por ciclo</p>
           <h1>{{ ciclo_etiqueta }}</h1>
+          {% if not ciclo_tiene_informacion %}
+            <p class="empty-period">No se registraron movimientos durante este ciclo.</p>
+          {% endif %}
         </div>
         <form class="date-card auto-filter" method="get" action="{{ url_for('resumen') }}">
           <label>

@@ -7,7 +7,7 @@
     <link rel="manifest" href="{{ url_for('static', filename='manifest.json') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
   </head>
-  <body>
+  <body class="planning-page">
     <header class="topbar">
       <a class="brand" href="{{ url_for('index') }}">Finanzas</a>
       <nav>
@@ -95,7 +95,7 @@
             <h2>Como se calcula</h2>
             <span class="hint-inline">No afecta otras paginas</span>
           </div>
-          <div class="table-wrap">
+          <div class="table-wrap planning-breakdown">
             <table>
               <thead>
                 <tr>
@@ -107,22 +107,22 @@
               </thead>
               <tbody>
                 <tr>
-                  <td>Registrado</td>
-                  <td class="positive">{{ ingresos_base|moneda }}</td>
-                  <td class="negative">{{ gastos_base|moneda }}</td>
-                  <td class="saving">{{ ahorros_base|moneda }}</td>
+                  <td data-label="Origen">Registrado</td>
+                  <td data-label="Ingresos" class="positive">{{ ingresos_base|moneda }}</td>
+                  <td data-label="Gastos" class="negative">{{ gastos_base|moneda }}</td>
+                  <td data-label="Ahorros" class="saving">{{ ahorros_base|moneda }}</td>
                 </tr>
                 <tr>
-                  <td>Gastos fijos pendientes</td>
-                  <td>{{ 0|moneda }}</td>
-                  <td class="negative">{{ fijos_gastos|moneda }}</td>
-                  <td class="saving">{{ fijos_ahorros|moneda }}</td>
+                  <td data-label="Origen">Gastos fijos pendientes</td>
+                  <td data-label="Ingresos">{{ 0|moneda }}</td>
+                  <td data-label="Gastos" class="negative">{{ fijos_gastos|moneda }}</td>
+                  <td data-label="Ahorros" class="saving">{{ fijos_ahorros|moneda }}</td>
                 </tr>
                 <tr>
-                  <td>Planificado</td>
-                  <td class="positive">{{ plan_ingresos|moneda }}</td>
-                  <td class="negative">{{ plan_gastos|moneda }}</td>
-                  <td class="saving">{{ plan_ahorros|moneda }}</td>
+                  <td data-label="Origen">Planificado</td>
+                  <td data-label="Ingresos" class="positive">{{ plan_ingresos|moneda }}</td>
+                  <td data-label="Gastos" class="negative">{{ plan_gastos|moneda }}</td>
+                  <td data-label="Ahorros" class="saving">{{ plan_ahorros|moneda }}</td>
                 </tr>
               </tbody>
             </table>
@@ -137,7 +137,7 @@
             <span class="kpi-pill">{{ fijos_pendientes|length }}</span>
           </div>
           {% if fijos_pendientes %}
-            <ul class="movement-list">
+            <ul class="movement-list planned-list">
               {% for item in fijos_pendientes %}
                 <li>
                   <div>

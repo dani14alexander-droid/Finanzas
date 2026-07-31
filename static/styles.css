@@ -845,6 +845,12 @@ th {
   margin: 20px 0 0;
 }
 
+.empty-period {
+  color: var(--muted);
+  font-size: 0.9rem;
+  margin: 8px 0 0;
+}
+
 .form {
   display: grid;
   gap: 16px;
@@ -1161,6 +1167,97 @@ select:focus {
   .movement-list strong,
   .movement-list span {
     overflow-wrap: anywhere;
+  }
+
+  .planning-page .automation-grid {
+    gap: 12px;
+  }
+
+  .planning-page .form button {
+    width: 100%;
+  }
+
+  .planning-page .planning-breakdown {
+    margin: 12px 0 0;
+    overflow: visible;
+    padding: 0;
+  }
+
+  .planning-breakdown table,
+  .planning-breakdown tbody,
+  .planning-breakdown tr,
+  .planning-breakdown td {
+    display: block;
+    min-width: 0;
+    width: 100%;
+  }
+
+  .planning-breakdown thead {
+    display: none;
+  }
+
+  .planning-breakdown tbody {
+    display: grid;
+    gap: 10px;
+  }
+
+  .planning-breakdown tr {
+    background: #f8fafc;
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    padding: 10px 12px;
+  }
+
+  .planning-breakdown td {
+    align-items: center;
+    border: 0;
+    display: flex;
+    gap: 12px;
+    justify-content: space-between;
+    padding: 6px 0;
+    text-align: right;
+  }
+
+  .planning-breakdown td:first-child {
+    border-bottom: 1px solid var(--line);
+    font-weight: 800;
+    margin-bottom: 4px;
+    padding-bottom: 9px;
+  }
+
+  .planning-breakdown td::before {
+    color: var(--muted);
+    content: attr(data-label);
+    flex: 0 0 auto;
+    font-size: 0.78rem;
+    font-weight: 700;
+    text-align: left;
+    text-transform: uppercase;
+  }
+
+  .planned-list li {
+    align-items: stretch;
+    display: grid;
+    gap: 10px;
+    grid-template-columns: minmax(0, 1fr) auto;
+    padding: 12px 0;
+  }
+
+  .planned-list li > div {
+    grid-column: 1 / -1;
+  }
+
+  .planned-list li > b {
+    align-self: center;
+  }
+
+  .planned-list li > form {
+    margin: 0;
+  }
+
+  .planned-list li > form button {
+    min-height: 38px;
+    padding: 8px 12px;
   }
 }
 
