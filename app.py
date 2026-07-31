@@ -673,6 +673,17 @@ def saldo_antes_de(movimientos, fecha_inicio):
     return saldo
 
 
+def ciclo_anterior_tiene_informacion(movimientos, inicio):
+    mes_anterior = sumar_meses(date(inicio.year, inicio.month, 1), -1)
+    inicio_anterior = fecha_movimiento(penultimo_dia_habil_mes(mes_anterior))
+    fin_anterior = inicio - timedelta(days=1)
+    return any(
+        (fecha := fecha_movimiento(item.get("fecha", "")))
+        and inicio_anterior <= fecha <= fin_anterior
+        for item in movimientos
+    )
+
+
 def etiqueta_ciclo(clave):
     fecha = fecha_movimiento(clave)
     if fecha:
@@ -777,16 +788,10 @@ def movimientos_de_ciclo(movimientos, clave):
     ]
     if not items:
         return [], inicio, fin
-    mes_anterior = sumar_meses(date(inicio.year, inicio.month, 1), -1)
-    inicio_anterior = fecha_movimiento(penultimo_dia_habil_mes(mes_anterior))
-    fin_anterior = inicio - timedelta(days=1)
-    ciclo_anterior_tiene_informacion = any(
-        (fecha := fecha_movimiento(item.get("fecha", "")))
-        and inicio_anterior <= fecha <= fin_anterior
-        for item in movimientos
-    )
     saldo_anterior = (
-        saldo_antes_de(movimientos, inicio) if ciclo_anterior_tiene_informacion else 0
+        saldo_antes_de(movimientos, inicio)
+        if ciclo_anterior_tiene_informacion(movimientos, inicio)
+        else 0
     )
     if abs(saldo_anterior) >= 0.01:
         items.append(
@@ -1241,7 +1246,11 @@ def calcular_dashboard(filtrar_periodo=False):
     saldo_anterior = 0
     if filtrar_periodo:
         periodo_inicio, periodo_fin = rango_dashboard(hoy, movimientos)
-        saldo_anterior = saldo_antes_de(movimientos, periodo_inicio)
+        saldo_anterior = (
+            saldo_antes_de(movimientos, periodo_inicio)
+            if ciclo_anterior_tiene_informacion(movimientos, periodo_inicio)
+            else 0
+        )
         movimientos = [
             item
             for item in movimientos
