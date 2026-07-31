@@ -15,19 +15,54 @@ const categoryListsByType = {
 document.querySelectorAll("[data-category-list]").forEach((categoryInput) => {
   const form = categoryInput.form || categoryInput.closest("form");
   const typeSelect = form?.elements?.namedItem("tipo");
-  if (!typeSelect) {
-    return;
-  }
+  const categoryPicker = document.createElement("select");
+  categoryPicker.className = "category-picker";
+  categoryPicker.setAttribute("aria-label", "Categorias sugeridas");
 
-  const updateCategoryList = () => {
-    categoryInput.setAttribute(
-      "list",
-      categoryListsByType[typeSelect.value] || "categorias-todas"
-    );
+  const refreshCategoryPicker = () => {
+    const listId = typeSelect
+      ? categoryListsByType[typeSelect.value] || "categorias-todas"
+      : categoryInput.getAttribute("list") || "categorias-todas";
+    const dataList = document.getElementById(listId);
+    const categories = Array.from(dataList?.options || []).map((option) => option.value);
+
+    categoryPicker.replaceChildren();
+    const prompt = document.createElement("option");
+    prompt.value = "";
+    prompt.textContent = "Selecciona una categoria";
+    categoryPicker.append(prompt);
+    categories.forEach((category) => {
+      const option = document.createElement("option");
+      option.value = category;
+      option.textContent = category;
+      option.selected = categoryInput.value === category;
+      categoryPicker.append(option);
+    });
+
+    categoryInput.setAttribute("list", listId);
   };
 
-  updateCategoryList();
-  typeSelect.addEventListener("change", updateCategoryList);
+  const updateCategoryList = () => {
+    refreshCategoryPicker();
+  };
+
+  categoryInput.before(categoryPicker);
+  categoryInput.placeholder = "O escribe otra categoria";
+  refreshCategoryPicker();
+
+  categoryPicker.addEventListener("change", () => {
+    if (categoryPicker.value) {
+      categoryInput.value = categoryPicker.value;
+    }
+  });
+  categoryInput.addEventListener("input", () => {
+    categoryPicker.value = Array.from(categoryPicker.options).some(
+      (option) => option.value === categoryInput.value
+    )
+      ? categoryInput.value
+      : "";
+  });
+  typeSelect?.addEventListener("change", updateCategoryList);
 });
 
 document.querySelectorAll(".auto-filter").forEach((form) => {

@@ -55,6 +55,28 @@ PLANIFICACION_COLUMNAS = ["fecha", "tipo", "categoria", "descripcion", "monto"]
 TIPOS_VALIDOS = {"Ingreso", "Gasto", "Ahorro"}
 TIPOS_AUTOMATIZACION = {"Gasto", "Ahorro"}
 TIPOS_DEUDA = {"Me deben", "Debo"}
+CATEGORIAS_PREDEFINIDAS = {
+    "Ingreso": ["Sueldo", "Devolución de Impuestos", "Balance"],
+    "Gasto": [
+        "Deuda",
+        "Comida",
+        "Arriendo",
+        "Salud e imagen",
+        "Familia",
+        "Entretenimiento",
+        "Ropa",
+        "Mascotas",
+        "Regalo",
+        "Giro",
+        "Prestamo",
+        "Educación",
+        "Balance",
+        "Transporte",
+    ],
+    "Ahorro": ["Ahorro", "Inversión", "Fondo de emergencia", "Balance"],
+    "Me deben": ["Prestamo", "Adelanto", "Compra compartida"],
+    "Debo": ["Prestamo", "Tarjeta", "Adelanto"],
+}
 MESES = [
     "Enero",
     "Febrero",
@@ -411,6 +433,10 @@ def categorias_existentes():
         categorias.setdefault(tipo, {})
         categorias[tipo].setdefault(categoria.lower(), categoria)
         categorias["Todas"].setdefault(categoria.lower(), categoria)
+
+    for tipo, valores in CATEGORIAS_PREDEFINIDAS.items():
+        for categoria in valores:
+            agregar_categoria(tipo, categoria)
 
     for item in leer_movimientos():
         agregar_categoria(item.get("tipo", ""), item.get("categoria", ""))

@@ -913,6 +913,14 @@ select:focus {
   outline: 3px solid rgba(31, 111, 235, 0.16);
 }
 
+.category-picker {
+  background: var(--panel);
+}
+
+.category-picker + [data-category-list] {
+  margin-top: 2px;
+}
+
 .actions {
   display: flex;
   gap: 12px;
