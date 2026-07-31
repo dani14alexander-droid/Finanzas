@@ -124,6 +124,16 @@ def conectar_db():
     return psycopg.connect(database_url(), row_factory=dict_row)
 
 
+def error_base_datos(error):
+    app.logger.error("La base de datos no esta disponible: %s", error)
+    template = app.jinja_env.get_template("base_datos_no_disponible.html")
+    return template.render(), 503
+
+
+if psycopg:
+    app.register_error_handler(psycopg.Error, error_base_datos)
+
+
 def asegurar_db():
     global DB_LISTA
     if not usar_base_datos():

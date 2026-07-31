@@ -851,6 +851,70 @@ th {
   margin: 8px 0 0;
 }
 
+.service-error {
+  align-items: center;
+  display: flex;
+  justify-content: center;
+  min-height: 100vh;
+  padding: 32px 16px;
+}
+
+.service-error-panel {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  box-shadow: 0 16px 44px rgba(31, 41, 55, 0.1);
+  max-width: 640px;
+  padding: 28px;
+  width: 100%;
+}
+
+.service-error-panel h1 {
+  font-size: 1.75rem;
+  margin-bottom: 12px;
+}
+
+.service-error-panel h2 {
+  margin-top: 24px;
+}
+
+.service-error-lead,
+.service-error-footnote {
+  color: var(--muted);
+  line-height: 1.55;
+}
+
+.service-error-notice {
+  background: var(--danger-soft);
+  border: 1px solid #fed7c2;
+  border-radius: 6px;
+  color: var(--negative);
+  font-weight: 700;
+  line-height: 1.45;
+  margin-top: 20px;
+  padding: 12px 14px;
+}
+
+.recovery-steps {
+  display: grid;
+  gap: 12px;
+  line-height: 1.45;
+  padding-left: 24px;
+}
+
+.service-error-actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 24px;
+}
+
+.service-error-footnote {
+  border-top: 1px solid var(--line);
+  font-size: 0.88rem;
+  margin: 24px 0 0;
+  padding-top: 18px;
+}
+
 .form {
   display: grid;
   gap: 16px;
@@ -1266,6 +1330,27 @@ select:focus {
   .planned-list li > form button {
     min-height: 38px;
     padding: 8px 12px;
+  }
+
+  .service-error {
+    align-items: flex-start;
+    padding: 16px 12px;
+  }
+
+  .service-error-panel {
+    padding: 20px 16px;
+  }
+
+  .service-error-panel h1 {
+    font-size: 1.45rem;
+  }
+
+  .service-error-actions {
+    flex-direction: column;
+  }
+
+  .service-error-actions > * {
+    width: 100%;
   }
 }
 

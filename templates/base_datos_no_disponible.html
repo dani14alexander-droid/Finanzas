@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="theme-color" content="#1f6feb">
+    <title>Base de datos temporalmente inactiva</title>
+    <link rel="manifest" href="{{ url_for('static', filename='manifest.json') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+  </head>
+  <body>
+    <main class="service-error">
+      <section class="service-error-panel">
+        <p class="eyebrow">Servicio temporalmente inactivo</p>
+        <h1>No pudimos conectar con tus datos</h1>
+        <p class="service-error-lead">
+          Es posible que Supabase haya pausado el proyecto por inactividad. Tus movimientos
+          permanecen guardados y no se eliminaron.
+        </p>
+
+        <div class="service-error-notice">
+          No agregues ni edites movimientos hasta que la base de datos vuelva a estar activa.
+        </div>
+
+        <h2>Como reactivar la aplicacion</h2>
+        <ol class="recovery-steps">
+          <li>Abre el panel de Supabase e inicia sesion.</li>
+          <li>Selecciona el proyecto <strong>Finanzas</strong>.</li>
+          <li>Presiona <strong>Resume project</strong>.</li>
+          <li>Espera a que Supabase indique que el proyecto esta activo.</li>
+          <li>Regresa a esta pagina y presiona <strong>Intentar nuevamente</strong>.</li>
+        </ol>
+
+        <div class="service-error-actions">
+          <a class="button" href="https://supabase.com/dashboard" target="_blank" rel="noopener noreferrer">
+            Abrir Supabase
+          </a>
+          <a class="link-button" href="{{ request.url }}">Intentar nuevamente</a>
+        </div>
+
+        <p class="service-error-footnote">
+          Si el proyecto ya esta activo, espera unos minutos. Si el problema continua, revisa
+          que la variable <strong>DATABASE_URL</strong> del hosting sea correcta.
+        </p>
+      </section>
+    </main>
+  </body>
+</html>
