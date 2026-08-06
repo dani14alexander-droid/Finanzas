@@ -1879,6 +1879,15 @@ def pagar_deuda(deuda_id):
     return redirect(url_for("deudas"))
 
 
+@app.route("/deudas/eliminar/<int:deuda_id>", methods=["POST"])
+def eliminar_deuda(deuda_id):
+    deudas_lista = leer_deudas()
+    if 0 <= deuda_id < len(deudas_lista):
+        deudas_lista.pop(deuda_id)
+        escribir_deudas(deudas_lista)
+    return redirect(url_for("deudas"))
+
+
 @app.route("/historico")
 def historico():
     vista = request.args.get("vista", "diaria")

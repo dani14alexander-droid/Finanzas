@@ -118,7 +118,7 @@
             <span class="hint-inline">Al pagar se registra como ingreso o gasto.</span>
           </div>
           {% if pagadas %}
-            <ul class="movement-list">
+            <ul class="movement-list paid-debt-list">
               {% for item in pagadas[:6] %}
                 <li>
                   <div>
@@ -126,6 +126,9 @@
                     <span>{{ item.tipo }} · {{ item.fecha_pago }} · {{ item.descripcion or "Sin descripcion" }}</span>
                   </div>
                   <b class="{{ 'positive' if item.tipo == 'Me deben' else 'negative' }}">{{ item.monto|moneda }}</b>
+                  <form class="debt-delete" method="post" action="{{ url_for('eliminar_deuda', deuda_id=item.id) }}" data-confirm-delete>
+                    <button type="submit" class="danger-button">Eliminar</button>
+                  </form>
                 </li>
               {% endfor %}
             </ul>

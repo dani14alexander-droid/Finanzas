@@ -120,6 +120,14 @@ document.querySelectorAll("[data-close-dialog]").forEach((button) => {
   });
 });
 
+document.querySelectorAll("[data-confirm-delete]").forEach((form) => {
+  form.addEventListener("submit", (event) => {
+    if (!window.confirm("¿Eliminar esta deuda definitivamente?")) {
+      event.preventDefault();
+    }
+  });
+});
+
 document.querySelectorAll(".reason-dialog").forEach((dialog) => {
   dialog.addEventListener("click", (event) => {
     if (event.target === dialog) {

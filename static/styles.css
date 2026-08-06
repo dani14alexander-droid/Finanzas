@@ -642,6 +642,18 @@ th {
   align-self: end;
 }
 
+.debt-payment {
+  align-items: end;
+  display: grid;
+  gap: 10px;
+  grid-template-columns: minmax(150px, 1fr) auto;
+}
+
+.debt-delete {
+  align-self: end;
+  margin: 0;
+}
+
 .status {
   background: var(--danger-soft);
   border: 1px solid #fed7c2;
@@ -1205,6 +1217,30 @@ select:focus {
   .automation-actions form button,
   .debt-item button {
     flex: 1 1 auto;
+  }
+
+  .debt-payment {
+    grid-template-columns: 1fr;
+  }
+
+  .debt-payment button,
+  .debt-delete,
+  .debt-delete button {
+    width: 100%;
+  }
+
+  .paid-debt-list li {
+    align-items: center;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .paid-debt-list li > div {
+    grid-column: 1 / -1;
+  }
+
+  .paid-debt-list .debt-delete {
+    width: auto;
   }
 
   .actions {
