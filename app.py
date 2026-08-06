@@ -695,6 +695,20 @@ def periodo_movimiento_ciclo(valor, movimientos=None):
     return clave_ciclo(fecha, movimientos)
 
 
+def pago_deuda_genera_movimiento(deuda, fecha_pago, movimientos):
+    if deuda.get("tipo") != "Me deben":
+        return True
+
+    fecha_deuda = fecha_movimiento(deuda.get("fecha", ""))
+    fecha_pagada = fecha_movimiento(fecha_pago)
+    if not fecha_deuda or not fecha_pagada:
+        return True
+
+    ciclo_deuda = clave_ciclo(fecha_deuda, movimientos)
+    ciclo_pago = clave_ciclo(fecha_pagada, movimientos)
+    return ciclo_deuda != ciclo_pago
+
+
 def saldo_antes_de(movimientos, fecha_inicio):
     saldo = 0
     for item in movimientos:
@@ -1846,16 +1860,18 @@ def pagar_deuda(deuda_id):
     item = deudas_lista[deuda_id]
     if item["estado"] != "Pagada":
         fecha_pago = request.form.get("fecha_pago") or date.today().isoformat()
-        tipo_movimiento = "Ingreso" if item["tipo"] == "Me deben" else "Gasto"
-        guardar_movimiento(
-            {
-                "fecha": fecha_pago,
-                "tipo": tipo_movimiento,
-                "categoria": item["categoria"] or "Deudas",
-                "descripcion": f"{item['tipo']} - {item['persona']} | {item['descripcion']}",
-                "monto": item["monto"],
-            }
-        )
+        movimientos = leer_movimientos()
+        if pago_deuda_genera_movimiento(item, fecha_pago, movimientos):
+            tipo_movimiento = "Ingreso" if item["tipo"] == "Me deben" else "Gasto"
+            guardar_movimiento(
+                {
+                    "fecha": fecha_pago,
+                    "tipo": tipo_movimiento,
+                    "categoria": item["categoria"] or "Deudas",
+                    "descripcion": f"{item['tipo']} - {item['persona']} | {item['descripcion']}",
+                    "monto": item["monto"],
+                }
+            )
         item["estado"] = "Pagada"
         item["fecha_pago"] = fecha_pago
         deudas_lista[deuda_id] = item
