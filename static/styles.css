@@ -517,6 +517,131 @@ th {
   margin-top: 24px;
 }
 
+.goals-layout {
+  display: grid;
+  gap: 24px;
+  grid-template-columns: minmax(0, 1.4fr) minmax(240px, 0.6fr);
+  margin-top: 20px;
+}
+
+.goal-list {
+  display: grid;
+  gap: 16px;
+}
+
+.goal-row {
+  min-width: 0;
+}
+
+.goal-head {
+  align-items: baseline;
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+}
+
+.goal-head span,
+.goal-row small {
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
+.goal-track {
+  background: #e8edf4;
+  border-radius: 4px;
+  height: 10px;
+  margin: 7px 0 5px;
+  overflow: hidden;
+}
+
+.goal-track i {
+  background: var(--primary);
+  display: block;
+  height: 100%;
+}
+
+.goal-track i.goal-over {
+  background: var(--negative);
+}
+
+.goal-settings {
+  align-content: start;
+  background: #f8fafc;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  display: grid;
+  gap: 12px;
+  padding: 16px;
+}
+
+.goal-settings h2 {
+  margin-bottom: 2px;
+}
+
+.percent-input {
+  align-items: center;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 28px;
+}
+
+.percent-input b {
+  color: var(--muted);
+  text-align: right;
+}
+
+.macro-layout {
+  align-items: start;
+  display: grid;
+  gap: 16px;
+  grid-template-columns: minmax(0, 1.35fr) minmax(280px, 0.65fr);
+}
+
+.macro-form {
+  margin-top: 18px;
+}
+
+.macro-list {
+  border-top: 1px solid var(--line);
+}
+
+.macro-row {
+  align-items: center;
+  border-bottom: 1px solid var(--line);
+  display: grid;
+  gap: 16px;
+  grid-template-columns: minmax(160px, 1fr) minmax(220px, 0.8fr);
+  padding: 12px 0;
+}
+
+.macro-row > span {
+  min-width: 0;
+}
+
+.macro-row strong,
+.macro-row small {
+  display: block;
+}
+
+.macro-row strong {
+  color: var(--text);
+  overflow-wrap: anywhere;
+}
+
+.macro-row small {
+  font-size: 0.78rem;
+  margin-top: 4px;
+}
+
+.macro-save {
+  display: flex;
+  justify-content: flex-end;
+  padding-top: 18px;
+}
+
+.automatic-macros .movement-list {
+  margin-top: 12px;
+}
+
 .hint-inline {
   color: var(--muted);
   font-size: 0.9rem;
@@ -1142,6 +1267,37 @@ select:focus {
   .filter-bar,
   .salary-form {
     grid-template-columns: 1fr;
+  }
+
+  .goals-layout {
+    gap: 18px;
+    grid-template-columns: 1fr;
+  }
+
+  .macro-layout,
+  .macro-row {
+    grid-template-columns: 1fr;
+  }
+
+  .macro-row {
+    gap: 8px;
+  }
+
+  .macro-save {
+    position: sticky;
+    bottom: 0;
+    background: var(--panel);
+    padding: 12px 0 0;
+  }
+
+  .macro-save button {
+    width: 100%;
+  }
+
+  .goal-head {
+    align-items: start;
+    flex-direction: column;
+    gap: 3px;
   }
 
   .big-number {

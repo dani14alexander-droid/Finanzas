@@ -128,6 +128,24 @@ document.querySelectorAll("[data-confirm-delete]").forEach((form) => {
   });
 });
 
+document.querySelectorAll("[data-debt-form]").forEach((form) => {
+  const type = form.elements.namedItem("tipo");
+  const mode = form.elements.namedItem("modalidad");
+  const modeField = form.querySelector("[data-debt-mode]");
+  const installmentsField = form.querySelector("[data-installments]");
+
+  const updateDebtFields = () => {
+    const isPayable = type.value === "Debo";
+    const hasInstallments = isPayable && mode.value === "Cuotas";
+    modeField.hidden = !isPayable;
+    installmentsField.hidden = !hasInstallments;
+  };
+
+  type.addEventListener("change", updateDebtFields);
+  mode.addEventListener("change", updateDebtFields);
+  updateDebtFields();
+});
+
 document.querySelectorAll(".reason-dialog").forEach((dialog) => {
   dialog.addEventListener("click", (event) => {
     if (event.target === dialog) {

@@ -14,6 +14,7 @@
         <a href="{{ url_for('index') }}">Dashboard</a>
         <a href="{{ url_for('resumen') }}">Resumen</a>
         <a href="{{ url_for('planificacion') }}">Planificacion</a>
+        <a href="{{ url_for('macrocategorias') }}">Macros</a>
         <a href="{{ url_for('historico') }}">Historico</a>
         <a href="{{ url_for('automatizacion') }}">Gastos fijos</a>
         <a href="{{ url_for('deudas') }}">Deudas</a>
@@ -51,13 +52,27 @@
       <section class="automation-grid">
         <article class="panel">
           <h2>Nueva deuda</h2>
-          <form method="post" class="form">
+          <form method="post" class="form" data-debt-form>
             <label>
               Tipo
               <select name="tipo" required>
                 <option>Me deben</option>
                 <option>Debo</option>
               </select>
+            </label>
+
+            <label data-debt-mode hidden>
+              Modalidad
+              <select name="modalidad">
+                <option value="Simple">Deuda simple</option>
+                <option value="Cuotas">Compra en cuotas</option>
+                <option value="Prestamo">Prestamo recibido</option>
+              </select>
+            </label>
+
+            <label data-installments hidden>
+              Numero de cuotas
+              <input type="number" name="cuotas_total" min="1" max="120" value="1">
             </label>
 
             <label>
@@ -115,7 +130,7 @@
         <article class="panel">
           <div class="panel-header">
             <h2>Pagadas</h2>
-            <span class="hint-inline">Al pagar se registra como ingreso o gasto.</span>
+            <span class="hint-inline">Pagos y cuotas completadas.</span>
           </div>
           {% if pagadas %}
             <ul class="movement-list paid-debt-list">
@@ -123,7 +138,10 @@
                 <li>
                   <div>
                     <strong>{{ item.persona }}</strong>
-                    <span>{{ item.tipo }} · {{ item.fecha_pago }} · {{ item.descripcion or "Sin descripcion" }}</span>
+                    <span>
+                      {{ item.tipo }} · {{ item.fecha_pago }} · {{ item.descripcion or "Sin descripcion" }}
+                      {% if item.modalidad == 'Cuotas' %} · {{ item.cuotas_pagadas }}/{{ item.cuotas_total }} cuotas{% endif %}
+                    </span>
                   </div>
                   <b class="{{ 'positive' if item.tipo == 'Me deben' else 'negative' }}">{{ item.monto|moneda }}</b>
                   <form class="debt-delete" method="post" action="{{ url_for('eliminar_deuda', deuda_id=item.id) }}" data-confirm-delete>

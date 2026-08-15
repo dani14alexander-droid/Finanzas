@@ -6,6 +6,7 @@ import calendar
 import csv
 import json
 import os
+import uuid
 
 try:
     import psycopg
@@ -25,10 +26,12 @@ CSV_PATH = DATA_DIR / "finanzas.csv"
 AUTOMATIZACIONES_PATH = DATA_DIR / "automatizaciones.csv"
 DEUDAS_PATH = DATA_DIR / "deudas.csv"
 PLANIFICACION_PATH = DATA_DIR / "planificacion.csv"
+METAS_PATH = DATA_DIR / "metas.csv"
+MACRO_CATEGORIAS_PATH = DATA_DIR / "macro_categorias.csv"
 ENV_PATH = BASE_DIR / ".env"
 LINK_PATH = BASE_DIR / "link.txt"
 DB_LISTA = False
-COLUMNAS = ["fecha", "tipo", "categoria", "descripcion", "monto"]
+COLUMNAS = ["fecha", "tipo", "categoria", "descripcion", "monto", "ticket_deuda", "origen_deuda"]
 AUTOMATIZACION_COLUMNAS = [
     "tipo",
     "categoria",
@@ -50,8 +53,32 @@ DEUDA_COLUMNAS = [
     "monto",
     "estado",
     "fecha_pago",
+    "modalidad",
+    "cuotas_total",
+    "cuotas_pagadas",
+    "ticket_deuda",
 ]
 PLANIFICACION_COLUMNAS = ["fecha", "tipo", "categoria", "descripcion", "monto"]
+META_COLUMNAS = ["macro", "porcentaje"]
+MACRO_CATEGORIA_COLUMNAS = ["tipo", "categoria", "macro"]
+MACROS_ASIGNABLES = [
+    "Ahorro principal",
+    "Alimentacion",
+    "Transporte",
+    "Salidas y ocio",
+    "Compras personales",
+    "Fondo imprevistos",
+]
+METAS_PREDEFINIDAS = [
+    ("Gastos fijos", 35),
+    ("Ahorro principal", 15),
+    ("Alimentacion", 15),
+    ("Transporte", 10),
+    ("Salidas y ocio", 10),
+    ("Compras personales", 5),
+    ("Fondo imprevistos", 5),
+    ("Libre", 5),
+]
 TIPOS_VALIDOS = {"Ingreso", "Gasto", "Ahorro"}
 TIPOS_AUTOMATIZACION = {"Gasto", "Ahorro"}
 TIPOS_DEUDA = {"Me deben", "Debo"}
@@ -150,7 +177,19 @@ def asegurar_db():
                     tipo TEXT NOT NULL DEFAULT '',
                     categoria TEXT NOT NULL DEFAULT '',
                     descripcion TEXT NOT NULL DEFAULT '',
-                    monto DOUBLE PRECISION NOT NULL DEFAULT 0
+                    monto DOUBLE PRECISION NOT NULL DEFAULT 0,
+                    ticket_deuda TEXT NOT NULL DEFAULT '',
+                    origen_deuda TEXT NOT NULL DEFAULT ''
+                )
+                """
+            )
+            cursor.execute(
+                """
+                CREATE TABLE IF NOT EXISTS macro_categorias (
+                    tipo TEXT NOT NULL DEFAULT '',
+                    categoria TEXT NOT NULL DEFAULT '',
+                    macro TEXT NOT NULL DEFAULT '',
+                    PRIMARY KEY (tipo, categoria)
                 )
                 """
             )
@@ -182,7 +221,11 @@ def asegurar_db():
                     descripcion TEXT NOT NULL DEFAULT '',
                     monto DOUBLE PRECISION NOT NULL DEFAULT 0,
                     estado TEXT NOT NULL DEFAULT '',
-                    fecha_pago TEXT NOT NULL DEFAULT ''
+                    fecha_pago TEXT NOT NULL DEFAULT '',
+                    modalidad TEXT NOT NULL DEFAULT '',
+                    cuotas_total INTEGER NOT NULL DEFAULT 1,
+                    cuotas_pagadas INTEGER NOT NULL DEFAULT 0,
+                    ticket_deuda TEXT NOT NULL DEFAULT ''
                 )
                 """
             )
@@ -198,7 +241,36 @@ def asegurar_db():
                 )
                 """
             )
+            cursor.execute("ALTER TABLE movimientos ADD COLUMN IF NOT EXISTS ticket_deuda TEXT NOT NULL DEFAULT ''")
+            cursor.execute("ALTER TABLE movimientos ADD COLUMN IF NOT EXISTS origen_deuda TEXT NOT NULL DEFAULT ''")
+            cursor.execute("ALTER TABLE deudas ADD COLUMN IF NOT EXISTS modalidad TEXT NOT NULL DEFAULT ''")
+            cursor.execute("ALTER TABLE deudas ADD COLUMN IF NOT EXISTS cuotas_total INTEGER NOT NULL DEFAULT 1")
+            cursor.execute("ALTER TABLE deudas ADD COLUMN IF NOT EXISTS cuotas_pagadas INTEGER NOT NULL DEFAULT 0")
+            cursor.execute("ALTER TABLE deudas ADD COLUMN IF NOT EXISTS ticket_deuda TEXT NOT NULL DEFAULT ''")
+            cursor.execute(
+                """
+                CREATE TABLE IF NOT EXISTS metas (
+                    macro TEXT PRIMARY KEY,
+                    porcentaje DOUBLE PRECISION NOT NULL DEFAULT 0
+                )
+                """
+            )
     DB_LISTA = True
+
+
+def asegurar_columnas_csv(path, columnas):
+    if not path.exists():
+        return
+    with path.open(newline="", encoding="utf-8") as archivo:
+        reader = csv.DictReader(archivo)
+        if reader.fieldnames == columnas:
+            return
+        filas = list(reader)
+    with path.open("w", newline="", encoding="utf-8") as archivo:
+        writer = csv.DictWriter(archivo, fieldnames=columnas)
+        writer.writeheader()
+        for fila in filas:
+            writer.writerow({columna: fila.get(columna, "") for columna in columnas})
 
 
 def asegurar_csv():
@@ -219,6 +291,18 @@ def asegurar_csv():
         with PLANIFICACION_PATH.open("w", newline="", encoding="utf-8") as archivo:
             writer = csv.DictWriter(archivo, fieldnames=PLANIFICACION_COLUMNAS)
             writer.writeheader()
+    if not METAS_PATH.exists():
+        with METAS_PATH.open("w", newline="", encoding="utf-8") as archivo:
+            writer = csv.DictWriter(archivo, fieldnames=META_COLUMNAS)
+            writer.writeheader()
+            for macro, porcentaje in METAS_PREDEFINIDAS:
+                writer.writerow({"macro": macro, "porcentaje": porcentaje})
+    if not MACRO_CATEGORIAS_PATH.exists():
+        with MACRO_CATEGORIAS_PATH.open("w", newline="", encoding="utf-8") as archivo:
+            writer = csv.DictWriter(archivo, fieldnames=MACRO_CATEGORIA_COLUMNAS)
+            writer.writeheader()
+    asegurar_columnas_csv(CSV_PATH, COLUMNAS)
+    asegurar_columnas_csv(DEUDAS_PATH, DEUDA_COLUMNAS)
 
 
 def leer_movimientos():
@@ -227,7 +311,7 @@ def leer_movimientos():
         with conectar_db() as conexion:
             with conexion.cursor() as cursor:
                 cursor.execute(
-                    "SELECT fecha, tipo, categoria, descripcion, monto FROM movimientos ORDER BY id"
+                    "SELECT fecha, tipo, categoria, descripcion, monto, ticket_deuda, origen_deuda FROM movimientos ORDER BY id"
                 )
                 movimientos = []
                 for indice, fila in enumerate(cursor.fetchall()):
@@ -260,8 +344,8 @@ def escribir_movimientos(movimientos):
                 cursor.execute("TRUNCATE movimientos RESTART IDENTITY")
                 cursor.executemany(
                     """
-                    INSERT INTO movimientos (fecha, tipo, categoria, descripcion, monto)
-                    VALUES (%s, %s, %s, %s, %s)
+                    INSERT INTO movimientos (fecha, tipo, categoria, descripcion, monto, ticket_deuda, origen_deuda)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s)
                     """,
                     [
                         (
@@ -270,6 +354,8 @@ def escribir_movimientos(movimientos):
                             movimiento.get("categoria", ""),
                             movimiento.get("descripcion", ""),
                             float(movimiento.get("monto") or 0),
+                            movimiento.get("ticket_deuda", ""),
+                            movimiento.get("origen_deuda", ""),
                         )
                         for movimiento in movimientos
                     ],
@@ -291,8 +377,8 @@ def guardar_movimiento(movimiento):
             with conexion.cursor() as cursor:
                 cursor.execute(
                     """
-                    INSERT INTO movimientos (fecha, tipo, categoria, descripcion, monto)
-                    VALUES (%s, %s, %s, %s, %s)
+                    INSERT INTO movimientos (fecha, tipo, categoria, descripcion, monto, ticket_deuda, origen_deuda)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s)
                     """,
                     (
                         movimiento.get("fecha", ""),
@@ -300,6 +386,8 @@ def guardar_movimiento(movimiento):
                         movimiento.get("categoria", ""),
                         movimiento.get("descripcion", ""),
                         float(movimiento.get("monto") or 0),
+                        movimiento.get("ticket_deuda", ""),
+                        movimiento.get("origen_deuda", ""),
                     ),
                 )
         return
@@ -402,7 +490,8 @@ def leer_deudas():
             with conexion.cursor() as cursor:
                 cursor.execute(
                     """
-                    SELECT fecha, tipo, persona, categoria, descripcion, monto, estado, fecha_pago
+                    SELECT fecha, tipo, persona, categoria, descripcion, monto, estado, fecha_pago,
+                           modalidad, cuotas_total, cuotas_pagadas, ticket_deuda
                     FROM deudas
                     ORDER BY id
                     """
@@ -411,6 +500,8 @@ def leer_deudas():
                 for indice, fila in enumerate(cursor.fetchall()):
                     item = {columna: fila.get(columna) or "" for columna in DEUDA_COLUMNAS}
                     item["monto"] = float(item["monto"] or 0)
+                    item["cuotas_total"] = int(item["cuotas_total"] or 1)
+                    item["cuotas_pagadas"] = int(item["cuotas_pagadas"] or 0)
                     item["id"] = indice
                     deudas.append(item)
                 return deudas
@@ -426,6 +517,14 @@ def leer_deudas():
             except ValueError:
                 item["monto"] = 0
             item["id"] = indice
+            try:
+                item["cuotas_total"] = max(int(item.get("cuotas_total") or 1), 1)
+            except ValueError:
+                item["cuotas_total"] = 1
+            try:
+                item["cuotas_pagadas"] = max(int(item.get("cuotas_pagadas") or 0), 0)
+            except ValueError:
+                item["cuotas_pagadas"] = 0
             deudas.append(item)
     return deudas
 
@@ -489,9 +588,10 @@ def escribir_deudas(deudas):
                 cursor.executemany(
                     """
                     INSERT INTO deudas (
-                        fecha, tipo, persona, categoria, descripcion, monto, estado, fecha_pago
+                        fecha, tipo, persona, categoria, descripcion, monto, estado, fecha_pago,
+                        modalidad, cuotas_total, cuotas_pagadas, ticket_deuda
                     )
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                     """,
                     [
                         (
@@ -503,6 +603,10 @@ def escribir_deudas(deudas):
                             float(item.get("monto") or 0),
                             item.get("estado", ""),
                             item.get("fecha_pago", ""),
+                            item.get("modalidad", ""),
+                            int(item.get("cuotas_total") or 1),
+                            int(item.get("cuotas_pagadas") or 0),
+                            item.get("ticket_deuda", ""),
                         )
                         for item in deudas
                     ],
@@ -606,6 +710,82 @@ def guardar_planificacion(item):
         writer.writerow(item)
 
 
+def leer_metas():
+    if usar_base_datos():
+        asegurar_db()
+        with conectar_db() as conexion:
+            with conexion.cursor() as cursor:
+                cursor.execute("SELECT macro, porcentaje FROM metas")
+                guardadas = {fila["macro"]: float(fila["porcentaje"] or 0) for fila in cursor.fetchall()}
+    else:
+        asegurar_csv()
+        with METAS_PATH.open(newline="", encoding="utf-8") as archivo:
+            guardadas = {
+                fila.get("macro", ""): float(fila.get("porcentaje") or 0)
+                for fila in csv.DictReader(archivo)
+            }
+    return [
+        {"macro": macro, "porcentaje": guardadas.get(macro, porcentaje)}
+        for macro, porcentaje in METAS_PREDEFINIDAS
+    ]
+
+
+def escribir_metas(metas):
+    if usar_base_datos():
+        asegurar_db()
+        with conectar_db() as conexion:
+            with conexion.cursor() as cursor:
+                cursor.execute("TRUNCATE metas")
+                cursor.executemany(
+                    "INSERT INTO metas (macro, porcentaje) VALUES (%s, %s)",
+                    [(item["macro"], float(item["porcentaje"])) for item in metas],
+                )
+        return
+    asegurar_csv()
+    with METAS_PATH.open("w", newline="", encoding="utf-8") as archivo:
+        writer = csv.DictWriter(archivo, fieldnames=META_COLUMNAS)
+        writer.writeheader()
+        writer.writerows(metas)
+
+
+def leer_macro_categorias():
+    if usar_base_datos():
+        asegurar_db()
+        with conectar_db() as conexion:
+            with conexion.cursor() as cursor:
+                cursor.execute("SELECT tipo, categoria, macro FROM macro_categorias")
+                return [dict(fila) for fila in cursor.fetchall()]
+    asegurar_csv()
+    with MACRO_CATEGORIAS_PATH.open(newline="", encoding="utf-8") as archivo:
+        return [dict(fila) for fila in csv.DictReader(archivo)]
+
+
+def escribir_macro_categorias(asignaciones):
+    if usar_base_datos():
+        asegurar_db()
+        with conectar_db() as conexion:
+            with conexion.cursor() as cursor:
+                cursor.execute("TRUNCATE macro_categorias")
+                cursor.executemany(
+                    "INSERT INTO macro_categorias (tipo, categoria, macro) VALUES (%s, %s, %s)",
+                    [(item["tipo"], item["categoria"], item["macro"]) for item in asignaciones],
+                )
+        return
+    asegurar_csv()
+    with MACRO_CATEGORIAS_PATH.open("w", newline="", encoding="utf-8") as archivo:
+        writer = csv.DictWriter(archivo, fieldnames=MACRO_CATEGORIA_COLUMNAS)
+        writer.writeheader()
+        writer.writerows(asignaciones)
+
+
+def asignaciones_macro_dict():
+    return {
+        (item["tipo"], item["categoria"].strip().lower()): item["macro"]
+        for item in leer_macro_categorias()
+        if item.get("macro") in MACROS_ASIGNABLES
+    }
+
+
 def periodo_actual():
     return clave_ciclo(date.today())
 
@@ -696,7 +876,10 @@ def periodo_movimiento_ciclo(valor, movimientos=None):
 
 
 def pago_deuda_genera_movimiento(deuda, fecha_pago, movimientos):
-    if deuda.get("tipo") != "Me deben":
+    tiene_movimiento_origen = deuda.get("tipo") == "Me deben" or (
+        deuda.get("tipo") == "Debo" and deuda.get("modalidad") == "Prestamo"
+    )
+    if not tiene_movimiento_origen:
         return True
 
     fecha_deuda = fecha_movimiento(deuda.get("fecha", ""))
@@ -707,6 +890,27 @@ def pago_deuda_genera_movimiento(deuda, fecha_pago, movimientos):
     ciclo_deuda = clave_ciclo(fecha_deuda, movimientos)
     ciclo_pago = clave_ciclo(fecha_pagada, movimientos)
     return ciclo_deuda != ciclo_pago
+
+
+def monto_cuota(deuda):
+    cuotas = max(int(deuda.get("cuotas_total") or 1), 1)
+    return float(deuda.get("monto") or 0) / cuotas
+
+
+def eliminar_movimientos_deuda(ticket, origen=None):
+    if not ticket:
+        return
+    movimientos = leer_movimientos()
+    filtrados = [
+        item
+        for item in movimientos
+        if not (
+            item.get("ticket_deuda") == ticket
+            and (origen is None or item.get("origen_deuda") == origen)
+        )
+    ]
+    if len(filtrados) != len(movimientos):
+        escribir_movimientos(filtrados)
 
 
 def saldo_antes_de(movimientos, fecha_inicio):
@@ -1321,22 +1525,34 @@ def calcular_dashboard(filtrar_periodo=False):
     semanas, dias_restantes, hoy = calcular_semanas_restantes(hoy, periodo_fin)
     movimientos = sorted(movimientos, key=lambda item: item["fecha"], reverse=True)
     ingresos_lista = [item for item in movimientos if item["tipo"] == "Ingreso"]
-    gastos_lista = [item for item in movimientos if item["tipo"] == "Gasto"]
+    deudas_lista = [
+        item
+        for item in movimientos
+        if item["tipo"] == "Gasto" and item.get("categoria", "").strip().lower() == "deuda"
+    ]
+    gastos_lista = [
+        item
+        for item in movimientos
+        if item["tipo"] == "Gasto" and item not in deudas_lista
+    ]
     ahorros_lista = [item for item in movimientos if item["tipo"] == "Ahorro"]
     ingresos = sum(item["monto"] for item in ingresos_lista)
     gastos = sum(item["monto"] for item in gastos_lista)
+    deuda = sum(item["monto"] for item in deudas_lista)
     ahorros = sum(item["monto"] for item in ahorros_lista)
-    disponible = ingresos - gastos - ahorros
+    disponible = ingresos - gastos - deuda - ahorros
     cuota_semanal = disponible / semanas if semanas > 0 else 0
     return {
         "movimientos": movimientos,
         "ingresos_lista": ingresos_lista,
         "gastos_lista": gastos_lista,
+        "deudas_lista": deudas_lista,
         "ahorros_lista": ahorros_lista,
         "ingresos": ingresos,
         "gastos": gastos,
+        "deuda": deuda,
         "ahorros": ahorros,
-        "balance": ingresos - gastos,
+        "balance": ingresos - gastos - deuda,
         "disponible": disponible,
         "semanas": semanas,
         "dias_restantes": dias_restantes,
@@ -1378,24 +1594,72 @@ def calcular_planificacion():
 
     fijos_gastos = sum(item["monto"] for item in fijos_pendientes if item["tipo"] == "Gasto")
     fijos_ahorros = sum(item["monto"] for item in fijos_pendientes if item["tipo"] == "Ahorro")
+    deudas_cuotas = [
+        item
+        for item in leer_deudas()
+        if item.get("tipo") == "Debo"
+        and item.get("modalidad") == "Cuotas"
+        and item.get("estado") != "Pagada"
+    ]
+    cuotas_mes = sum(monto_cuota(item) for item in deudas_cuotas)
+    fijos_gastos += cuotas_mes
+    gastos_fijos_ciclo = sum(
+        item["monto"]
+        for item in automatizaciones
+        if item.get("activo") and item.get("tipo") == "Gasto" and not esta_anulada(item, periodo)
+    ) + cuotas_mes
     plan_ingresos = sum(item["monto"] for item in planificaciones if item["tipo"] == "Ingreso")
     plan_gastos = sum(item["monto"] for item in planificaciones if item["tipo"] == "Gasto")
     plan_ahorros = sum(item["monto"] for item in planificaciones if item["tipo"] == "Ahorro")
 
     ingresos = datos["ingresos"] + plan_ingresos
-    gastos = datos["gastos"] + fijos_gastos + plan_gastos
+    gastos = datos["gastos"] + datos["deuda"] + fijos_gastos + plan_gastos
     ahorros = datos["ahorros"] + fijos_ahorros + plan_ahorros
     disponible = ingresos - gastos - ahorros
+
+    asignaciones = asignaciones_macro_dict()
+    variables = {macro: 0.0 for macro in MACROS_ASIGNABLES}
+    for item in movimientos + planificaciones:
+        tipo = item.get("tipo")
+        if tipo not in {"Gasto", "Ahorro"}:
+            continue
+        categoria = (item.get("categoria") or "").strip().lower()
+        es_fijo = tipo == "Gasto" and any(
+            automatizacion.get("activo")
+            and movimiento_coincide_automatizacion(item, automatizacion)
+            for automatizacion in automatizaciones
+        )
+        if es_fijo:
+            continue
+        macro = asignaciones.get((tipo, categoria))
+        if macro:
+            variables[macro] += float(item.get("monto") or 0)
+
+    valores_macro = {
+        "Gastos fijos": gastos_fijos_ciclo,
+        **variables,
+    }
+    valores_macro["Libre"] = max(disponible, 0)
+    metas = leer_metas()
+    for meta in metas:
+        meta["objetivo"] = ingresos * meta["porcentaje"] / 100
+        meta["actual"] = valores_macro.get(meta["macro"], 0)
+        objetivo = meta["objetivo"]
+        meta["avance"] = min(meta["actual"] / objetivo * 100, 100) if objetivo > 0 else 0
+        meta["excedida"] = objetivo > 0 and meta["actual"] > objetivo
 
     return {
         "periodo_inicio": periodo_inicio,
         "periodo_fin": periodo_fin,
         "ingresos_base": datos["ingresos"],
-        "gastos_base": datos["gastos"],
+        "gastos_base": datos["gastos"] + datos["deuda"],
         "ahorros_base": datos["ahorros"],
         "fijos_pendientes": fijos_pendientes,
         "fijos_gastos": fijos_gastos,
         "fijos_ahorros": fijos_ahorros,
+        "deudas_cuotas": deudas_cuotas,
+        "cuotas_mes": cuotas_mes,
+        "gastos_fijos_ciclo": gastos_fijos_ciclo,
         "planificaciones": planificaciones,
         "plan_ingresos": plan_ingresos,
         "plan_gastos": plan_gastos,
@@ -1404,6 +1668,8 @@ def calcular_planificacion():
         "gastos": gastos,
         "ahorros": ahorros,
         "disponible": disponible,
+        "metas": metas,
+        "metas_total": sum(item["porcentaje"] for item in metas),
     }
 
 
@@ -1415,6 +1681,16 @@ def index():
 @app.route("/planificacion", methods=["GET", "POST"])
 def planificacion():
     if request.method == "POST":
+        if request.form.get("accion") == "guardar_metas":
+            metas = []
+            for macro, predeterminado in METAS_PREDEFINIDAS:
+                try:
+                    porcentaje = float(request.form.get(f"meta_{macro}", predeterminado) or 0)
+                except ValueError:
+                    porcentaje = predeterminado
+                metas.append({"macro": macro, "porcentaje": min(max(porcentaje, 0), 100)})
+            escribir_metas(metas)
+            return redirect(url_for("planificacion", _anchor="metas"))
         tipo = request.form.get("tipo", "Gasto")
         if tipo not in TIPOS_VALIDOS:
             tipo = "Gasto"
@@ -1430,6 +1706,60 @@ def planificacion():
         return redirect(url_for("planificacion"))
 
     return render_template("planificacion.html", **calcular_planificacion())
+
+
+def categorias_para_macros():
+    categorias = {}
+
+    def agregar(tipo, categoria):
+        categoria = (categoria or "").strip()
+        if tipo not in {"Gasto", "Ahorro"} or not categoria:
+            return
+        categorias.setdefault((tipo, categoria.lower()), categoria)
+
+    for tipo in ("Gasto", "Ahorro"):
+        for categoria in CATEGORIAS_PREDEFINIDAS.get(tipo, []):
+            agregar(tipo, categoria)
+    for coleccion in (leer_movimientos(), leer_planificaciones()):
+        for item in coleccion:
+            agregar(item.get("tipo", ""), item.get("categoria", ""))
+
+    guardadas = asignaciones_macro_dict()
+    return [
+        {
+            "tipo": tipo,
+            "categoria": categoria,
+            "macro": guardadas.get((tipo, clave), ""),
+        }
+        for (tipo, clave), categoria in sorted(
+            categorias.items(), key=lambda item: (item[0][0], item[1].lower())
+        )
+    ]
+
+
+@app.route("/macrocategorias", methods=["GET", "POST"])
+def macrocategorias():
+    categorias = categorias_para_macros()
+    if request.method == "POST":
+        asignaciones = []
+        for indice, item in enumerate(categorias):
+            macro = request.form.get(f"macro_{indice}", "")
+            if macro in MACROS_ASIGNABLES:
+                asignaciones.append({**item, "macro": macro})
+        escribir_macro_categorias(asignaciones)
+        return redirect(url_for("macrocategorias"))
+
+    gastos_fijos = [
+        item
+        for item in leer_automatizaciones()
+        if item.get("activo") and item.get("tipo") == "Gasto"
+    ]
+    return render_template(
+        "macrocategorias.html",
+        categorias=categorias,
+        macros=MACROS_ASIGNABLES,
+        gastos_fijos=gastos_fijos,
+    )
 
 
 @app.route("/planificacion/eliminar/<int:planificacion_id>", methods=["POST"])
@@ -1815,20 +2145,48 @@ def deudas():
         tipo = request.form.get("tipo", "Me deben")
         if tipo not in TIPOS_DEUDA:
             tipo = "Me deben"
+        modalidad = request.form.get("modalidad", "Simple") if tipo == "Debo" else "Simple"
+        if modalidad not in {"Simple", "Cuotas", "Prestamo"}:
+            modalidad = "Simple"
+        try:
+            cuotas_total = max(int(request.form.get("cuotas_total", 1) or 1), 1)
+        except ValueError:
+            cuotas_total = 1
+        ticket_deuda = uuid.uuid4().hex
+        item = {
+            "fecha": request.form.get("fecha", ""),
+            "tipo": tipo,
+            "persona": request.form.get("persona", "").strip(),
+            "categoria": request.form.get("categoria", "").strip(),
+            "descripcion": request.form.get("descripcion", "").strip(),
+            "monto": float(request.form.get("monto", 0) or 0),
+            "estado": "Pendiente",
+            "fecha_pago": "",
+            "modalidad": modalidad,
+            "cuotas_total": cuotas_total if modalidad == "Cuotas" else 1,
+            "cuotas_pagadas": 0,
+            "ticket_deuda": ticket_deuda,
+        }
         deudas_lista = leer_deudas()
-        deudas_lista.append(
-            {
-                "fecha": request.form.get("fecha", ""),
-                "tipo": tipo,
-                "persona": request.form.get("persona", "").strip(),
-                "categoria": request.form.get("categoria", "").strip(),
-                "descripcion": request.form.get("descripcion", "").strip(),
-                "monto": float(request.form.get("monto", 0) or 0),
-                "estado": "Pendiente",
-                "fecha_pago": "",
-            }
-        )
+        deudas_lista.append(item)
         escribir_deudas(deudas_lista)
+        tipo_origen = None
+        if tipo == "Me deben":
+            tipo_origen = "Gasto"
+        elif tipo == "Debo" and modalidad == "Prestamo":
+            tipo_origen = "Ingreso"
+        if tipo_origen:
+            guardar_movimiento(
+                {
+                    "fecha": item["fecha"],
+                    "tipo": tipo_origen,
+                    "categoria": "Deuda",
+                    "descripcion": item["descripcion"] or item["persona"],
+                    "monto": item["monto"],
+                    "ticket_deuda": ticket_deuda,
+                    "origen_deuda": "origen",
+                }
+            )
         return redirect(url_for("deudas"))
 
     deudas_lista = leer_deudas()
@@ -1861,18 +2219,33 @@ def pagar_deuda(deuda_id):
     if item["estado"] != "Pagada":
         fecha_pago = request.form.get("fecha_pago") or date.today().isoformat()
         movimientos = leer_movimientos()
-        if pago_deuda_genera_movimiento(item, fecha_pago, movimientos):
+        mismo_ciclo = not pago_deuda_genera_movimiento(item, fecha_pago, movimientos)
+        if mismo_ciclo:
+            eliminar_movimientos_deuda(item.get("ticket_deuda", ""), "origen")
+        else:
             tipo_movimiento = "Ingreso" if item["tipo"] == "Me deben" else "Gasto"
+            monto_pago = monto_cuota(item) if item.get("modalidad") == "Cuotas" else item["monto"]
             guardar_movimiento(
                 {
                     "fecha": fecha_pago,
                     "tipo": tipo_movimiento,
                     "categoria": item["categoria"] or "Deudas",
                     "descripcion": f"{item['tipo']} - {item['persona']} | {item['descripcion']}",
-                    "monto": item["monto"],
+                    "monto": monto_pago,
+                    "ticket_deuda": item.get("ticket_deuda", ""),
+                    "origen_deuda": "pago",
                 }
             )
-        item["estado"] = "Pagada"
+        if item.get("modalidad") == "Cuotas":
+            item["cuotas_pagadas"] = min(
+                int(item.get("cuotas_pagadas") or 0) + 1,
+                int(item.get("cuotas_total") or 1),
+            )
+            item["estado"] = (
+                "Pagada" if item["cuotas_pagadas"] >= item["cuotas_total"] else "Pendiente"
+            )
+        else:
+            item["estado"] = "Pagada"
         item["fecha_pago"] = fecha_pago
         deudas_lista[deuda_id] = item
         escribir_deudas(deudas_lista)
@@ -1883,7 +2256,8 @@ def pagar_deuda(deuda_id):
 def eliminar_deuda(deuda_id):
     deudas_lista = leer_deudas()
     if 0 <= deuda_id < len(deudas_lista):
-        deudas_lista.pop(deuda_id)
+        item = deudas_lista.pop(deuda_id)
+        eliminar_movimientos_deuda(item.get("ticket_deuda", ""))
         escribir_deudas(deudas_lista)
     return redirect(url_for("deudas"))
 

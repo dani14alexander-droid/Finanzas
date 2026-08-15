@@ -4,7 +4,10 @@
       <div class="debt-item">
         <div>
           <strong>{{ item.persona }}</strong>
-          <span>{{ item.categoria }} · {{ item.fecha }} · {{ item.descripcion or "Sin descripcion" }}</span>
+          <span>
+            {{ item.categoria }} · {{ item.fecha }} · {{ item.descripcion or "Sin descripcion" }}
+            {% if item.modalidad == 'Cuotas' %} · cuota {{ item.cuotas_pagadas + 1 }} de {{ item.cuotas_total }}{% endif %}
+          </span>
           <b class="{{ 'positive' if item.tipo == 'Me deben' else 'negative' }}">{{ item.monto|moneda }}</b>
         </div>
         <form class="debt-payment" method="post" action="{{ url_for('pagar_deuda', deuda_id=item.id) }}">
@@ -12,7 +15,7 @@
             Fecha de pago
             <input type="date" name="fecha_pago">
           </label>
-          <button type="submit">Marcar pagada</button>
+          <button type="submit">{{ 'Pagar cuota' if item.modalidad == 'Cuotas' else 'Marcar pagada' }}</button>
         </form>
         <form class="debt-delete" method="post" action="{{ url_for('eliminar_deuda', deuda_id=item.id) }}" data-confirm-delete>
           <button type="submit" class="danger-button">Eliminar</button>

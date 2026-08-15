@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="theme-color" content="#1f6feb">
+    <title>Macrocategorias</title>
+    <link rel="manifest" href="{{ url_for('static', filename='manifest.json') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+  </head>
+  <body>
+    <header class="topbar">
+      <a class="brand" href="{{ url_for('index') }}">Finanzas</a>
+      <nav>
+        <a href="{{ url_for('index') }}">Dashboard</a>
+        <a href="{{ url_for('resumen') }}">Resumen</a>
+        <a href="{{ url_for('planificacion') }}">Planificacion</a>
+        <a href="{{ url_for('macrocategorias') }}">Macros</a>
+        <a href="{{ url_for('historico') }}">Historico</a>
+        <a href="{{ url_for('automatizacion') }}">Gastos fijos</a>
+        <a href="{{ url_for('deudas') }}">Deudas</a>
+      </nav>
+    </header>
+
+    <main class="container">
+      <section class="dashboard-head">
+        <div>
+          <p class="eyebrow">Configuracion de metas</p>
+          <h1>Asignar categorias</h1>
+        </div>
+        <a class="button button-soft" href="{{ url_for('planificacion', _anchor='metas') }}">Ver metas</a>
+      </section>
+
+      <section class="macro-layout">
+        <article class="panel">
+          <div class="panel-header">
+            <h2>Categorias configurables</h2>
+            <span class="kpi-pill">{{ categorias|length }}</span>
+          </div>
+          <form method="post" class="macro-form">
+            <div class="macro-list">
+              {% for item in categorias %}
+                <label class="macro-row">
+                  <span>
+                    <strong>{{ item.categoria }}</strong>
+                    <small>{{ item.tipo }}</small>
+                  </span>
+                  <select name="macro_{{ loop.index0 }}">
+                    <option value="">Sin asignar</option>
+                    {% for macro in macros %}
+                      <option value="{{ macro }}" {{ 'selected' if macro == item.macro else '' }}>{{ macro }}</option>
+                    {% endfor %}
+                  </select>
+                </label>
+              {% endfor %}
+            </div>
+            <div class="macro-save">
+              <button type="submit">Guardar asignaciones</button>
+            </div>
+          </form>
+        </article>
+
+        <aside class="panel automatic-macros">
+          <div class="panel-header">
+            <h2>Gastos fijos</h2>
+            <span class="status status-ok">Automatico</span>
+          </div>
+          {% if gastos_fijos %}
+            <ul class="movement-list">
+              {% for item in gastos_fijos %}
+                <li>
+                  <div>
+                    <strong>{{ item.descripcion or item.categoria }}</strong>
+                    <span>{{ item.categoria }} · dia {{ item.dia_mes }}</span>
+                  </div>
+                  <b class="negative">{{ item.monto|moneda }}</b>
+                </li>
+              {% endfor %}
+            </ul>
+          {% else %}
+            <p class="empty">No hay gastos fijos activos.</p>
+          {% endif %}
+        </aside>
+      </section>
+    </main>
+  </body>
+</html>

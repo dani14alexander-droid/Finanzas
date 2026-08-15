@@ -14,6 +14,7 @@
         <a href="{{ url_for('index') }}">Dashboard</a>
         <a href="{{ url_for('resumen') }}">Resumen</a>
         <a href="{{ url_for('planificacion') }}">Planificacion</a>
+        <a href="{{ url_for('macrocategorias') }}">Macros</a>
         <a href="{{ url_for('historico') }}">Historico</a>
         <a href="{{ url_for('automatizacion') }}">Gastos fijos</a>
         <a href="{{ url_for('deudas') }}">Deudas</a>
@@ -52,7 +53,49 @@
         </article>
       </section>
 
-      <section class="automation-grid">
+      <section class="panel goals-panel" id="metas">
+        <div class="panel-header">
+          <div>
+            <p class="eyebrow">Distribucion del ingreso</p>
+            <h1>Metas del ciclo</h1>
+          </div>
+          <span class="kpi-pill {{ 'negative' if metas_total > 100 else '' }}">{{ "%.0f"|format(metas_total) }}% asignado</span>
+        </div>
+
+        <div class="goals-layout">
+          <div class="goal-list">
+            {% for meta in metas %}
+              <article class="goal-row">
+                <div class="goal-head">
+                  <strong>{{ meta.macro }}</strong>
+                  <span>{{ meta.actual|moneda }} de {{ meta.objetivo|moneda }}</span>
+                </div>
+                <div class="goal-track" role="progressbar" aria-valuenow="{{ meta.avance }}" aria-valuemin="0" aria-valuemax="100">
+                  <i class="{{ 'goal-over' if meta.excedida else '' }}" style="width: {{ meta.avance }}%"></i>
+                </div>
+                <small>{{ "%.0f"|format(meta.avance) }}% de la meta · {{ "%.0f"|format(meta.porcentaje) }}% del ingreso</small>
+              </article>
+            {% endfor %}
+          </div>
+
+          <form class="goal-settings" method="post">
+            <input type="hidden" name="accion" value="guardar_metas">
+            <h2>Configurar porcentajes</h2>
+            {% for meta in metas %}
+              <label>
+                {{ meta.macro }}
+                <span class="percent-input">
+                  <input type="number" name="meta_{{ meta.macro }}" min="0" max="100" step="1" value="{{ meta.porcentaje }}">
+                  <b>%</b>
+                </span>
+              </label>
+            {% endfor %}
+            <button type="submit">Guardar metas</button>
+          </form>
+        </div>
+      </section>
+
+      <section class="automation-grid section-gap">
         <article class="panel">
           <h2>Agregar planificado</h2>
           <form method="post" class="form">
@@ -134,7 +177,7 @@
         <article class="panel">
           <div class="panel-header">
             <h2>Gastos fijos pendientes</h2>
-            <span class="kpi-pill">{{ fijos_pendientes|length }}</span>
+            <span class="kpi-pill">{{ fijos_pendientes|length + deudas_cuotas|length }}</span>
           </div>
           {% if fijos_pendientes %}
             <ul class="movement-list planned-list">
@@ -148,7 +191,21 @@
                 </li>
               {% endfor %}
             </ul>
-          {% else %}
+          {% endif %}
+          {% if deudas_cuotas %}
+            <ul class="movement-list planned-list">
+              {% for item in deudas_cuotas %}
+                <li>
+                  <div>
+                    <strong>Cuota · {{ item.persona }}</strong>
+                    <span>{{ item.cuotas_pagadas + 1 }} de {{ item.cuotas_total }} · {{ item.descripcion or item.categoria }}</span>
+                  </div>
+                  <b class="negative">{{ (item.monto / item.cuotas_total)|moneda }}</b>
+                </li>
+              {% endfor %}
+            </ul>
+          {% endif %}
+          {% if not fijos_pendientes and not deudas_cuotas %}
             <p class="empty">No hay gastos fijos pendientes para sumar.</p>
           {% endif %}
         </article>
