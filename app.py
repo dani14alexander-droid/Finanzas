@@ -1015,11 +1015,14 @@ def eliminar_movimientos_deuda(ticket, origen=None):
         escribir_movimientos(filtrados)
 
 
-def saldo_antes_de(movimientos, fecha_inicio):
+def saldo_ciclo_anterior(movimientos, fecha_inicio):
+    mes_anterior = sumar_meses(date(fecha_inicio.year, fecha_inicio.month, 1), -1)
+    inicio_anterior = fecha_movimiento(penultimo_dia_habil_mes(mes_anterior))
+    fin_anterior = fecha_inicio - timedelta(days=1)
     saldo = 0
     for item in movimientos:
         fecha = fecha_movimiento(item.get("fecha", ""))
-        if not fecha or fecha >= fecha_inicio:
+        if not fecha or not (inicio_anterior <= fecha <= fin_anterior):
             continue
         monto = float(item.get("monto") or 0)
         if item.get("tipo") == "Ingreso":
@@ -1145,7 +1148,7 @@ def movimientos_de_ciclo(movimientos, clave):
     if not items:
         return [], inicio, fin
     saldo_anterior = (
-        saldo_antes_de(movimientos, inicio)
+        saldo_ciclo_anterior(movimientos, inicio)
         if ciclo_anterior_tiene_informacion(movimientos, inicio)
         else 0
     )
@@ -1603,7 +1606,7 @@ def calcular_dashboard(filtrar_periodo=False):
     if filtrar_periodo:
         periodo_inicio, periodo_fin = rango_dashboard(hoy, movimientos)
         saldo_anterior = (
-            saldo_antes_de(movimientos, periodo_inicio)
+            saldo_ciclo_anterior(movimientos, periodo_inicio)
             if ciclo_anterior_tiene_informacion(movimientos, periodo_inicio)
             else 0
         )
