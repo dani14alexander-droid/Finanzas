@@ -1156,10 +1156,10 @@ def movimientos_de_ciclo(movimientos, clave):
         items.append(
             {
                 "fecha": inicio.isoformat(),
-                "tipo": "Ingreso",
+                "tipo": "Ingreso" if saldo_anterior > 0 else "Gasto",
                 "categoria": "Saldo anterior",
                 "descripcion": "Arrastre del ciclo anterior",
-                "monto": saldo_anterior,
+                "monto": abs(saldo_anterior),
                 "id": "",
             }
         )
@@ -1620,10 +1620,10 @@ def calcular_dashboard(filtrar_periodo=False):
             movimientos.append(
                 {
                     "fecha": periodo_inicio.isoformat(),
-                    "tipo": "Ingreso",
+                    "tipo": "Ingreso" if saldo_anterior > 0 else "Gasto",
                     "categoria": "Saldo anterior",
                     "descripcion": "Arrastre del ciclo anterior",
-                    "monto": saldo_anterior,
+                    "monto": abs(saldo_anterior),
                     "id": "",
                 }
             )
