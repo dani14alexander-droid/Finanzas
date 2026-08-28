@@ -600,6 +600,55 @@ th {
   margin-top: 18px;
 }
 
+.category-admin {
+  margin-bottom: 16px;
+}
+
+.category-create-form {
+  align-items: end;
+  display: grid;
+  gap: 12px;
+  grid-template-columns: minmax(150px, 0.4fr) minmax(220px, 1fr) auto;
+  margin: 18px 0;
+}
+
+.category-create-form label,
+.category-create-form label > span {
+  display: grid;
+  gap: 6px;
+}
+
+.category-list {
+  border-top: 1px solid var(--line);
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.category-row {
+  align-items: center;
+  border-bottom: 1px solid var(--line);
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+  min-width: 0;
+  padding: 10px 12px;
+}
+
+.category-row > span:first-child {
+  min-width: 0;
+}
+
+.category-row strong,
+.category-row small {
+  display: block;
+  overflow-wrap: anywhere;
+}
+
+.category-row small {
+  color: var(--muted);
+  margin-top: 3px;
+}
+
 .macro-list {
   border-top: 1px solid var(--line);
 }
@@ -1265,7 +1314,9 @@ select:focus {
   .automation-item,
   .debt-item,
   .filter-bar,
-  .salary-form {
+  .salary-form,
+  .category-create-form,
+  .category-list {
     grid-template-columns: 1fr;
   }
 

@@ -31,6 +31,50 @@
         <a class="button button-soft" href="{{ url_for('planificacion', _anchor='metas') }}">Ver metas</a>
       </section>
 
+      <section class="panel category-admin" id="categorias">
+        <div class="panel-header">
+          <div>
+            <p class="eyebrow">Catálogo de movimientos</p>
+            <h2>Administrar categorías</h2>
+          </div>
+          <span class="kpi-pill">{{ categorias_administrables|length }}</span>
+        </div>
+        <form method="post" action="{{ url_for('agregar_categoria') }}" class="category-create-form">
+          <label>
+            Tipo
+            <select name="tipo" required>
+              <option value="Gasto">Gasto</option>
+              <option value="Ingreso">Ingreso</option>
+              <option value="Ahorro">Ahorro</option>
+            </select>
+          </label>
+          <label>
+            Nueva categoría
+            <input type="text" name="categoria" placeholder="Nombre de la categoría" required>
+          </label>
+          <button type="submit">Crear categoría</button>
+        </form>
+        <div class="category-list">
+          {% for item in categorias_administrables %}
+            <div class="category-row">
+              <span>
+                <strong>{{ item.categoria }}</strong>
+                <small>{{ item.tipo }}</small>
+              </span>
+              {% if item.categoria|lower != 'sin categoría' %}
+                <form method="post" action="{{ url_for('eliminar_categoria') }}" onsubmit="return confirm('Los movimientos con esta categoría pasarán a Sin categoría. ¿Continuar?');">
+                  <input type="hidden" name="tipo" value="{{ item.tipo }}">
+                  <input type="hidden" name="categoria" value="{{ item.categoria }}">
+                  <button type="submit" class="danger-button">Eliminar</button>
+                </form>
+              {% else %}
+                <span class="status">Protegida</span>
+              {% endif %}
+            </div>
+          {% endfor %}
+        </div>
+      </section>
+
       <section class="macro-layout">
         <article class="panel">
           <div class="panel-header">

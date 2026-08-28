@@ -1,5 +1,7 @@
 from pathlib import Path
 from datetime import date, datetime, timedelta
+from zoneinfo import ZoneInfo
+from io import BytesIO
 from math import ceil
 import math
 import calendar
@@ -15,10 +17,12 @@ except ImportError:
     psycopg = None
     dict_row = None
 
-from flask import Flask, Response, redirect, render_template, request, url_for
+from flask import Flask, Response, redirect, render_template, request, send_file, url_for
 
 
 app = Flask(__name__)
+
+ZONA_HORARIA_CHILE = ZoneInfo("America/Santiago")
 
 BASE_DIR = Path(__file__).resolve().parent
 DATA_DIR = BASE_DIR / "data"
@@ -28,6 +32,7 @@ DEUDAS_PATH = DATA_DIR / "deudas.csv"
 PLANIFICACION_PATH = DATA_DIR / "planificacion.csv"
 METAS_PATH = DATA_DIR / "metas.csv"
 MACRO_CATEGORIAS_PATH = DATA_DIR / "macro_categorias.csv"
+CATEGORIAS_PATH = DATA_DIR / "categorias.csv"
 ENV_PATH = BASE_DIR / ".env"
 LINK_PATH = BASE_DIR / "link.txt"
 DB_LISTA = False
@@ -61,6 +66,8 @@ DEUDA_COLUMNAS = [
 PLANIFICACION_COLUMNAS = ["fecha", "tipo", "categoria", "descripcion", "monto"]
 META_COLUMNAS = ["macro", "porcentaje"]
 MACRO_CATEGORIA_COLUMNAS = ["tipo", "categoria", "macro"]
+CATEGORIA_COLUMNAS = ["tipo", "categoria"]
+CATEGORIA_SIN_ASIGNAR = "Sin categoría"
 MACROS_ASIGNABLES = [
     "Ahorro principal",
     "Alimentacion",
@@ -195,6 +202,15 @@ def asegurar_db():
             )
             cursor.execute(
                 """
+                CREATE TABLE IF NOT EXISTS categorias (
+                    tipo TEXT NOT NULL DEFAULT '',
+                    categoria TEXT NOT NULL DEFAULT '',
+                    PRIMARY KEY (tipo, categoria)
+                )
+                """
+            )
+            cursor.execute(
+                """
                 CREATE TABLE IF NOT EXISTS automatizaciones (
                     id BIGSERIAL PRIMARY KEY,
                     tipo TEXT NOT NULL DEFAULT '',
@@ -255,6 +271,28 @@ def asegurar_db():
                 )
                 """
             )
+            cursor.execute("SELECT COUNT(*) AS total FROM categorias")
+            if cursor.fetchone()["total"] == 0:
+                cursor.executemany(
+                    "INSERT INTO categorias (tipo, categoria) VALUES (%s, %s) ON CONFLICT DO NOTHING",
+                    [
+                        (tipo, categoria)
+                        for tipo in TIPOS_VALIDOS
+                        for categoria in CATEGORIAS_PREDEFINIDAS.get(tipo, [])
+                    ],
+                )
+            cursor.executemany(
+                "INSERT INTO categorias (tipo, categoria) VALUES (%s, %s) ON CONFLICT DO NOTHING",
+                [(tipo, CATEGORIA_SIN_ASIGNAR) for tipo in TIPOS_VALIDOS],
+            )
+            cursor.execute(
+                """
+                INSERT INTO categorias (tipo, categoria)
+                SELECT DISTINCT tipo, categoria FROM movimientos
+                WHERE tipo IN ('Ingreso', 'Gasto', 'Ahorro') AND BTRIM(categoria) <> ''
+                ON CONFLICT DO NOTHING
+                """
+            )
     DB_LISTA = True
 
 
@@ -301,6 +339,26 @@ def asegurar_csv():
         with MACRO_CATEGORIAS_PATH.open("w", newline="", encoding="utf-8") as archivo:
             writer = csv.DictWriter(archivo, fieldnames=MACRO_CATEGORIA_COLUMNAS)
             writer.writeheader()
+    if not CATEGORIAS_PATH.exists():
+        categorias_iniciales = []
+        for tipo in TIPOS_VALIDOS:
+            for categoria in [*CATEGORIAS_PREDEFINIDAS.get(tipo, []), CATEGORIA_SIN_ASIGNAR]:
+                categorias_iniciales.append({"tipo": tipo, "categoria": categoria})
+        if CSV_PATH.exists():
+            with CSV_PATH.open(newline="", encoding="utf-8") as archivo:
+                for fila in csv.DictReader(archivo):
+                    if fila.get("tipo") in TIPOS_VALIDOS and fila.get("categoria", "").strip():
+                        categorias_iniciales.append(
+                            {"tipo": fila["tipo"], "categoria": fila["categoria"].strip()}
+                        )
+        unicas = {
+            (item["tipo"], item["categoria"].lower()): item
+            for item in categorias_iniciales
+        }
+        with CATEGORIAS_PATH.open("w", newline="", encoding="utf-8") as archivo:
+            writer = csv.DictWriter(archivo, fieldnames=CATEGORIA_COLUMNAS)
+            writer.writeheader()
+            writer.writerows(unicas.values())
     asegurar_columnas_csv(CSV_PATH, COLUMNAS)
     asegurar_columnas_csv(DEUDAS_PATH, DEUDA_COLUMNAS)
 
@@ -529,6 +587,45 @@ def leer_deudas():
     return deudas
 
 
+def leer_categorias():
+    if usar_base_datos():
+        asegurar_db()
+        with conectar_db() as conexion:
+            with conexion.cursor() as cursor:
+                cursor.execute("SELECT tipo, categoria FROM categorias ORDER BY tipo, LOWER(categoria)")
+                return [dict(fila) for fila in cursor.fetchall()]
+    asegurar_csv()
+    with CATEGORIAS_PATH.open(newline="", encoding="utf-8") as archivo:
+        return [dict(fila) for fila in csv.DictReader(archivo)]
+
+
+def escribir_categorias(categorias):
+    unicas = {}
+    for item in categorias:
+        tipo = item.get("tipo", "")
+        categoria = item.get("categoria", "").strip()
+        if tipo in TIPOS_VALIDOS and categoria:
+            unicas[(tipo, categoria.lower())] = {"tipo": tipo, "categoria": categoria}
+    categorias_limpias = sorted(
+        unicas.values(), key=lambda item: (item["tipo"], item["categoria"].lower())
+    )
+    if usar_base_datos():
+        asegurar_db()
+        with conectar_db() as conexion:
+            with conexion.cursor() as cursor:
+                cursor.execute("TRUNCATE categorias")
+                cursor.executemany(
+                    "INSERT INTO categorias (tipo, categoria) VALUES (%s, %s)",
+                    [(item["tipo"], item["categoria"]) for item in categorias_limpias],
+                )
+        return
+    asegurar_csv()
+    with CATEGORIAS_PATH.open("w", newline="", encoding="utf-8") as archivo:
+        writer = csv.DictWriter(archivo, fieldnames=CATEGORIA_COLUMNAS)
+        writer.writeheader()
+        writer.writerows(categorias_limpias)
+
+
 def categorias_existentes():
     categorias = {"Todas": {}}
     tipos = TIPOS_VALIDOS | TIPOS_AUTOMATIZACION | TIPOS_DEUDA
@@ -544,16 +641,17 @@ def categorias_existentes():
         categorias["Todas"].setdefault(categoria.lower(), categoria)
 
     for tipo, valores in CATEGORIAS_PREDEFINIDAS.items():
+        if tipo in TIPOS_VALIDOS:
+            continue
         for categoria in valores:
             agregar_categoria(tipo, categoria)
 
-    for item in leer_movimientos():
+    for item in leer_categorias():
         agregar_categoria(item.get("tipo", ""), item.get("categoria", ""))
-    for item in leer_automatizaciones():
-        agregar_categoria(item.get("tipo", ""), item.get("categoria", ""))
+    for coleccion in (leer_movimientos(), leer_automatizaciones(), leer_planificaciones()):
+        for item in coleccion:
+            agregar_categoria(item.get("tipo", ""), item.get("categoria", ""))
     for item in leer_deudas():
-        agregar_categoria(item.get("tipo", ""), item.get("categoria", ""))
-    for item in leer_planificaciones():
         agregar_categoria(item.get("tipo", ""), item.get("categoria", ""))
 
     return {
@@ -786,19 +884,23 @@ def asignaciones_macro_dict():
     }
 
 
+def fecha_hoy_chile():
+    return datetime.now(ZONA_HORARIA_CHILE).date()
+
+
 def periodo_actual():
-    return clave_ciclo(date.today())
+    return clave_ciclo(fecha_hoy_chile())
 
 
 def proxima_fecha_mensual(dia_mes):
-    hoy = date.today()
+    hoy = fecha_hoy_chile()
     ultimo_dia = calendar.monthrange(hoy.year, hoy.month)[1]
     dia = min(max(int(dia_mes), 1), ultimo_dia)
     return date(hoy.year, hoy.month, dia).isoformat()
 
 
 def penultimo_dia_habil_mes(hoy=None):
-    hoy = hoy or date.today()
+    hoy = hoy or fecha_hoy_chile()
     ultimo_dia = calendar.monthrange(hoy.year, hoy.month)[1]
     dias_habiles = [
         date(hoy.year, hoy.month, dia)
@@ -982,7 +1084,7 @@ def rango_ciclo(clave, movimientos):
     try:
         anio, mes = [int(parte) for parte in clave.split("-")[:2]]
     except (ValueError, IndexError):
-        return rango_dashboard(date.today(), movimientos)
+        return rango_dashboard(fecha_hoy_chile(), movimientos)
 
     inicio = date(anio, mes, 1)
     fin = date(anio, mes, calendar.monthrange(anio, mes)[1])
@@ -995,7 +1097,7 @@ def opciones_ciclos(movimientos):
         for item in movimientos
         if es_sueldo(item) and (fecha := fecha_movimiento(item.get("fecha", "")))
     }
-    claves.add(clave_ciclo(date.today(), movimientos))
+    claves.add(clave_ciclo(fecha_hoy_chile(), movimientos))
 
     # Include missing salary periods so months without activity remain visible.
     fechas_ciclo = sorted(fecha_movimiento(clave) for clave in claves if fecha_movimiento(clave))
@@ -1062,7 +1164,7 @@ def movimientos_de_ciclo(movimientos, clave):
 
 
 def asegurar_sueldo_automatico(hoy=None):
-    hoy = hoy or date.today()
+    hoy = hoy or fecha_hoy_chile()
     fecha_sueldo = fecha_sueldo_esperada(hoy)
     if not fecha_sueldo or hoy < fecha_sueldo:
         return False
@@ -1174,7 +1276,7 @@ def preparar_segmentos(items):
 
 
 def calcular_semanas_restantes(hoy=None, fecha_fin=None):
-    hoy = hoy or date.today()
+    hoy = hoy or fecha_hoy_chile()
     if fecha_fin is None:
         ultimo_dia = calendar.monthrange(hoy.year, hoy.month)[1]
         fecha_fin = date(hoy.year, hoy.month, ultimo_dia)
@@ -1184,7 +1286,7 @@ def calcular_semanas_restantes(hoy=None, fecha_fin=None):
 
 
 def rango_dashboard(hoy=None, movimientos=None):
-    hoy = hoy or date.today()
+    hoy = hoy or fecha_hoy_chile()
     movimientos = movimientos or []
     sueldo = ultimo_sueldo(movimientos)
     if sueldo:
@@ -1492,7 +1594,7 @@ def resumen_historico(vista):
 
 
 def calcular_dashboard(filtrar_periodo=False):
-    hoy = date.today()
+    hoy = fecha_hoy_chile()
     asegurar_sueldo_automatico(hoy)
     movimientos = leer_movimientos()
     periodo_inicio = None
@@ -1717,10 +1819,9 @@ def categorias_para_macros():
             return
         categorias.setdefault((tipo, categoria.lower()), categoria)
 
-    for tipo in ("Gasto", "Ahorro"):
-        for categoria in CATEGORIAS_PREDEFINIDAS.get(tipo, []):
-            agregar(tipo, categoria)
-    for coleccion in (leer_movimientos(), leer_planificaciones()):
+    for item in leer_categorias():
+        agregar(item.get("tipo", ""), item.get("categoria", ""))
+    for coleccion in (leer_movimientos(), leer_automatizaciones(), leer_planificaciones()):
         for item in coleccion:
             agregar(item.get("tipo", ""), item.get("categoria", ""))
 
@@ -1735,6 +1836,94 @@ def categorias_para_macros():
             categorias.items(), key=lambda item: (item[0][0], item[1].lower())
         )
     ]
+
+
+def categorias_administrables():
+    categorias = {}
+    for item in leer_categorias():
+        tipo = item.get("tipo", "")
+        categoria = item.get("categoria", "").strip()
+        if tipo in TIPOS_VALIDOS and categoria:
+            categorias[(tipo, categoria.lower())] = {"tipo": tipo, "categoria": categoria}
+    for coleccion in (leer_movimientos(), leer_automatizaciones(), leer_planificaciones()):
+        for item in coleccion:
+            tipo = item.get("tipo", "")
+            categoria = item.get("categoria", "").strip()
+            if tipo in TIPOS_VALIDOS and categoria:
+                categorias.setdefault(
+                    (tipo, categoria.lower()), {"tipo": tipo, "categoria": categoria}
+                )
+    return sorted(categorias.values(), key=lambda item: (item["tipo"], item["categoria"].lower()))
+
+
+def reemplazar_categoria_eliminada(tipo, categoria):
+    categoria_clave = categoria.strip().lower()
+    colecciones = [
+        (leer_movimientos, escribir_movimientos),
+        (leer_automatizaciones, escribir_automatizaciones),
+        (leer_planificaciones, escribir_planificaciones),
+    ]
+    for leer, escribir in colecciones:
+        items = leer()
+        hubo_cambios = False
+        for item in items:
+            if (
+                item.get("tipo") == tipo
+                and item.get("categoria", "").strip().lower() == categoria_clave
+            ):
+                item["categoria"] = CATEGORIA_SIN_ASIGNAR
+                hubo_cambios = True
+        if hubo_cambios:
+            escribir(items)
+
+
+@app.route("/macrocategorias/categorias/agregar", methods=["POST"])
+def agregar_categoria():
+    tipo = request.form.get("tipo", "")
+    categoria = request.form.get("categoria", "").strip()
+    if tipo in TIPOS_VALIDOS and categoria:
+        categorias = leer_categorias()
+        if not any(
+            item.get("tipo") == tipo
+            and item.get("categoria", "").strip().lower() == categoria.lower()
+            for item in categorias
+        ):
+            categorias.append({"tipo": tipo, "categoria": categoria})
+            escribir_categorias(categorias)
+    return redirect(url_for("macrocategorias", _anchor="categorias"))
+
+
+@app.route("/macrocategorias/categorias/eliminar", methods=["POST"])
+def eliminar_categoria():
+    tipo = request.form.get("tipo", "")
+    categoria = request.form.get("categoria", "").strip()
+    if (
+        tipo in TIPOS_VALIDOS
+        and categoria
+        and categoria.lower() != CATEGORIA_SIN_ASIGNAR.lower()
+    ):
+        reemplazar_categoria_eliminada(tipo, categoria)
+        escribir_categorias(
+            [
+                item
+                for item in leer_categorias()
+                if not (
+                    item.get("tipo") == tipo
+                    and item.get("categoria", "").strip().lower() == categoria.lower()
+                )
+            ]
+        )
+        escribir_macro_categorias(
+            [
+                item
+                for item in leer_macro_categorias()
+                if not (
+                    item.get("tipo") == tipo
+                    and item.get("categoria", "").strip().lower() == categoria.lower()
+                )
+            ]
+        )
+    return redirect(url_for("macrocategorias", _anchor="categorias"))
 
 
 @app.route("/macrocategorias", methods=["GET", "POST"])
@@ -1757,6 +1946,7 @@ def macrocategorias():
     return render_template(
         "macrocategorias.html",
         categorias=categorias,
+        categorias_administrables=categorias_administrables(),
         macros=MACROS_ASIGNABLES,
         gastos_fijos=gastos_fijos,
     )
@@ -1836,9 +2026,21 @@ def agregar_sueldo():
 
 @app.route("/editar/<int:movimiento_id>", methods=["GET", "POST"])
 def editar(movimiento_id):
+    volver_ciclo = request.values.get("volver_ciclo", "").strip()
+    volver_busqueda = request.values.get("volver_q", "").strip()
+    volver_tipo = request.values.get("volver_tipo", "Todos")
+    parametros_resumen = {}
+    if volver_ciclo:
+        parametros_resumen["ciclo"] = volver_ciclo
+    if volver_busqueda:
+        parametros_resumen["q"] = volver_busqueda
+    if volver_tipo in TIPOS_VALIDOS:
+        parametros_resumen["tipo"] = volver_tipo
+    volver_a = f"{url_for('resumen', **parametros_resumen)}#movimientos"
+
     movimientos = leer_movimientos()
     if movimiento_id < 0 or movimiento_id >= len(movimientos):
-        return redirect(url_for("resumen"))
+        return redirect(volver_a)
 
     movimiento = movimientos[movimiento_id]
     if request.method == "POST":
@@ -1853,7 +2055,7 @@ def editar(movimiento_id):
         }
         escribir_movimientos(movimientos)
         actualizar_automatizaciones_por_movimiento(movimiento_anterior, movimientos)
-        return redirect(url_for("resumen"))
+        return redirect(volver_a)
 
     return render_template(
         "agregar.html",
@@ -1861,18 +2063,32 @@ def editar(movimiento_id):
         tipo=None,
         movimiento=movimiento,
         ayuda_categoria="Categoria del movimiento",
-        volver_a=url_for("resumen"),
+        volver_a=volver_a,
+        volver_ciclo=volver_ciclo,
+        volver_busqueda=volver_busqueda,
+        volver_tipo=volver_tipo,
     )
 
 
 @app.route("/eliminar/<int:movimiento_id>", methods=["POST"])
 def eliminar(movimiento_id):
+    volver_ciclo = request.form.get("volver_ciclo", "").strip()
+    volver_busqueda = request.form.get("volver_q", "").strip()
+    volver_tipo = request.form.get("volver_tipo", "Todos")
+    parametros_resumen = {}
+    if volver_ciclo:
+        parametros_resumen["ciclo"] = volver_ciclo
+    if volver_busqueda:
+        parametros_resumen["q"] = volver_busqueda
+    if volver_tipo in TIPOS_VALIDOS:
+        parametros_resumen["tipo"] = volver_tipo
+
     movimientos = leer_movimientos()
     if 0 <= movimiento_id < len(movimientos):
         movimiento_eliminado = movimientos.pop(movimiento_id)
         escribir_movimientos(movimientos)
         actualizar_automatizaciones_por_movimiento(movimiento_eliminado, movimientos)
-    return redirect(url_for("resumen"))
+    return redirect(f"{url_for('resumen', **parametros_resumen)}#movimientos")
 
 
 @app.route("/resumen/agregar", methods=["POST"])
@@ -2217,7 +2433,7 @@ def pagar_deuda(deuda_id):
 
     item = deudas_lista[deuda_id]
     if item["estado"] != "Pagada":
-        fecha_pago = request.form.get("fecha_pago") or date.today().isoformat()
+        fecha_pago = request.form.get("fecha_pago") or fecha_hoy_chile().isoformat()
         movimientos = leer_movimientos()
         mismo_ciclo = not pago_deuda_genera_movimiento(item, fecha_pago, movimientos)
         if mismo_ciclo:
@@ -2323,7 +2539,7 @@ def resumen():
     todos_movimientos = leer_movimientos()
     ciclos = opciones_ciclos(todos_movimientos)
     ciclo_seleccionado = request.args.get("ciclo") or (
-        ciclos[0]["valor"] if ciclos else clave_ciclo(date.today(), todos_movimientos)
+        ciclos[0]["valor"] if ciclos else clave_ciclo(fecha_hoy_chile(), todos_movimientos)
     )
     if ciclos and ciclo_seleccionado not in {item["valor"] for item in ciclos}:
         ciclo_seleccionado = ciclos[0]["valor"]
@@ -2344,7 +2560,7 @@ def resumen():
     )
     busqueda = request.args.get("q", "").strip()
     filtro_tipo = request.args.get("tipo", "Todos")
-    semanas, _, _ = calcular_semanas_restantes(date.today(), periodo_fin)
+    semanas, _, _ = calcular_semanas_restantes(fecha_hoy_chile(), periodo_fin)
     ingresos = sum(item["monto"] for item in movimientos if item["tipo"] == "Ingreso")
     gastos = sum(item["monto"] for item in movimientos if item["tipo"] == "Gasto")
     ahorros = sum(item["monto"] for item in movimientos if item["tipo"] == "Ahorro")
@@ -2442,6 +2658,59 @@ def resumen():
         movimientos_filtrados=movimientos_filtrados,
         busqueda=busqueda,
         filtro_tipo=filtro_tipo,
+    )
+
+
+@app.route("/resumen/exportar.xlsx")
+def exportar_movimientos_ciclo():
+    from openpyxl import Workbook
+    from openpyxl.styles import Font, PatternFill
+
+    todos_movimientos = leer_movimientos()
+    ciclo = request.args.get("ciclo", "").strip()
+    ciclos_validos = {item["valor"] for item in opciones_ciclos(todos_movimientos)}
+    if ciclo not in ciclos_validos:
+        ciclo = clave_ciclo(fecha_hoy_chile(), todos_movimientos)
+    movimientos, inicio, fin = movimientos_de_ciclo(todos_movimientos, ciclo)
+
+    libro = Workbook()
+    hoja = libro.active
+    hoja.title = "Movimientos"
+    encabezados = ["Fecha", "Tipo", "Categoría", "Descripción", "Monto"]
+    hoja.append(encabezados)
+    for celda in hoja[1]:
+        celda.font = Font(bold=True, color="FFFFFF")
+        celda.fill = PatternFill("solid", fgColor="1F6FEB")
+
+    for item in sorted(movimientos, key=lambda movimiento: movimiento.get("fecha", "")):
+        fecha = fecha_movimiento(item.get("fecha", ""))
+        hoja.append(
+            [
+                fecha,
+                item.get("tipo", ""),
+                item.get("categoria", "") or CATEGORIA_SIN_ASIGNAR,
+                item.get("descripcion", ""),
+                float(item.get("monto") or 0),
+            ]
+        )
+    for celda in hoja["A"][1:]:
+        celda.number_format = "dd-mm-yyyy"
+    for celda in hoja["E"][1:]:
+        celda.number_format = '$' + '#,##0.00'
+    hoja.freeze_panes = "A2"
+    hoja.auto_filter.ref = hoja.dimensions
+    for columna, ancho in {"A": 14, "B": 14, "C": 24, "D": 38, "E": 18}.items():
+        hoja.column_dimensions[columna].width = ancho
+
+    salida = BytesIO()
+    libro.save(salida)
+    salida.seek(0)
+    nombre = f"movimientos_{inicio.isoformat()}_{fin.isoformat()}.xlsx"
+    return send_file(
+        salida,
+        as_attachment=True,
+        download_name=nombre,
+        mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     )
 
 

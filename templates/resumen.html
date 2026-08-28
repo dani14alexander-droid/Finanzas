@@ -41,6 +41,7 @@
             </select>
           </label>
           <small>{{ periodo_inicio|fecha_corta }} al {{ periodo_fin|fecha_corta }}</small>
+          <a class="button button-soft" href="{{ url_for('exportar_movimientos_ciclo', ciclo=ciclo_seleccionado) }}">Descargar Excel</a>
         </form>
       </section>
 
@@ -212,7 +213,7 @@
                     </td>
                     <td>
                       {% if item.id != "" %}
-                        <a class="table-action" href="{{ url_for('editar', movimiento_id=item.id) }}">Editar</a>
+                        <a class="table-action" href="{{ url_for('editar', movimiento_id=item.id, volver_ciclo=ciclo_seleccionado, volver_q=busqueda, volver_tipo=filtro_tipo) }}">Editar</a>
                       {% else %}
                         <span class="hint-inline">Automatico</span>
                       {% endif %}
