@@ -162,10 +162,24 @@ document.querySelectorAll("[data-debt-form]").forEach((form) => {
 });
 
 document.querySelectorAll(".cash-breakdown").forEach((breakdown) => {
+  const form = breakdown.closest("form");
   const list = breakdown.querySelector("[data-cash-breakdown-list]");
   const template = breakdown.querySelector("[data-cash-breakdown-template]");
   const addButton = breakdown.querySelector("[data-add-cash]");
-  const mainDate = breakdown.closest("form")?.elements?.namedItem("fecha");
+  const mainDate = form?.elements?.namedItem("fecha");
+  const type = form?.elements?.namedItem("tipo");
+  const category = form?.elements?.namedItem("categoria");
+  const categoryPicker = form?.querySelector(".category-picker");
+
+  const updateCashVisibility = () => {
+    const isCashExpense =
+      type?.value === "Gasto" &&
+      category?.value.trim().toLocaleLowerCase("es") === "efectivo";
+    breakdown.hidden = !isCashExpense;
+    breakdown.querySelectorAll("input, button").forEach((control) => {
+      control.disabled = !isCashExpense;
+    });
+  };
 
   const setDefaultDate = (row) => {
     const dateInput = row.querySelector('input[name="sub_fecha"]');
@@ -196,6 +210,11 @@ document.querySelectorAll(".cash-breakdown").forEach((breakdown) => {
       input.value = input.name === "sub_fecha" ? mainDate?.value || "" : "";
     });
   });
+
+  type?.addEventListener("change", updateCashVisibility);
+  category?.addEventListener("input", updateCashVisibility);
+  categoryPicker?.addEventListener("change", updateCashVisibility);
+  updateCashVisibility();
 });
 
 document.querySelectorAll(".reason-dialog").forEach((dialog) => {

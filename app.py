@@ -2391,7 +2391,13 @@ def editar(movimiento_id):
         volver_ciclo=volver_ciclo,
         volver_busqueda=volver_busqueda,
         volver_tipo=volver_tipo,
-        subgastos=leer_subgastos_efectivo(movimiento.get("ticket_movimiento", "")),
+        subgastos=(
+            leer_subgastos_efectivo(movimiento.get("ticket_movimiento"))
+            if movimiento.get("ticket_movimiento")
+            and movimiento.get("tipo") == "Gasto"
+            and movimiento.get("categoria", "").strip().lower() == CATEGORIA_EFECTIVO.lower()
+            else []
+        ),
     )
 
 
