@@ -78,8 +78,8 @@
 
           {% set detalles = subgastos|default([]) %}
             <details class="cash-breakdown" data-cash-breakdown hidden {{ 'open' if detalles else '' }}>
-              <summary>Desglose de gasto en efectivo</summary>
-              <p>Usa la categoría <strong>Efectivo</strong> en el movimiento principal. La suma del detalle no puede superar el monto total.</p>
+              <summary data-detail-title>Desglose del movimiento</summary>
+              <p data-detail-help>La suma del detalle no puede superar el monto total.</p>
               <div class="cash-breakdown-list" data-cash-breakdown-list>
                 {% for detalle in detalles %}
                   <div class="cash-breakdown-row">
@@ -148,6 +148,6 @@
       {% endif %}
     </main>
 
-    <script src="{{ url_for('static', filename='app.js', v='20260829-5') }}"></script>
+    <script src="{{ url_for('static', filename='app.js', v='20260829-6') }}"></script>
   </body>
 </html>

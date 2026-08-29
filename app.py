@@ -74,6 +74,7 @@ MACRO_CATEGORIA_COLUMNAS = ["tipo", "categoria", "macro"]
 CATEGORIA_COLUMNAS = ["tipo", "categoria"]
 CATEGORIA_SIN_ASIGNAR = "Sin categoría"
 CATEGORIA_EFECTIVO = "Efectivo"
+CATEGORIA_AHORRO_FLEXIBLE = "Ahorro flexible"
 SUBGASTO_COLUMNAS = ["ticket_movimiento", "fecha", "categoria", "descripcion", "monto"]
 MACROS_ASIGNABLES = [
     "Ahorro principal",
@@ -310,7 +311,7 @@ def asegurar_db():
             cursor.executemany(
                 "INSERT INTO categorias (tipo, categoria) VALUES (%s, %s) ON CONFLICT DO NOTHING",
                 [(tipo, CATEGORIA_SIN_ASIGNAR) for tipo in TIPOS_VALIDOS]
-                + [("Gasto", CATEGORIA_EFECTIVO)],
+                + [("Gasto", CATEGORIA_EFECTIVO), ("Ahorro", CATEGORIA_AHORRO_FLEXIBLE)],
             )
             cursor.execute(
                 """
@@ -399,6 +400,18 @@ def asegurar_csv():
             for item in categorias_guardadas
         ):
             categorias_guardadas.append({"tipo": "Gasto", "categoria": CATEGORIA_EFECTIVO})
+            with CATEGORIAS_PATH.open("w", newline="", encoding="utf-8") as archivo:
+                writer = csv.DictWriter(archivo, fieldnames=CATEGORIA_COLUMNAS)
+                writer.writeheader()
+                writer.writerows(categorias_guardadas)
+        if not any(
+            item.get("tipo") == "Ahorro"
+            and item.get("categoria", "").strip().lower() == CATEGORIA_AHORRO_FLEXIBLE.lower()
+            for item in categorias_guardadas
+        ):
+            categorias_guardadas.append(
+                {"tipo": "Ahorro", "categoria": CATEGORIA_AHORRO_FLEXIBLE}
+            )
             with CATEGORIAS_PATH.open("w", newline="", encoding="utf-8") as archivo:
                 writer = csv.DictWriter(archivo, fieldnames=CATEGORIA_COLUMNAS)
                 writer.writeheader()
@@ -1219,6 +1232,51 @@ def subgastos_por_movimiento():
     return agrupados
 
 
+def es_movimiento_detallable(movimiento):
+    tipo = movimiento.get("tipo")
+    categoria = movimiento.get("categoria", "").strip().lower()
+    return (
+        tipo == "Gasto" and categoria == CATEGORIA_EFECTIVO.lower()
+    ) or (
+        tipo == "Ahorro" and categoria == CATEGORIA_AHORRO_FLEXIBLE.lower()
+    )
+
+
+def total_detalles_movimiento(movimiento, subgastos_agrupados):
+    return min(
+        sum(
+            float(item.get("monto") or 0)
+            for item in subgastos_agrupados.get(movimiento.get("ticket_movimiento", ""), [])
+        ),
+        float(movimiento.get("monto") or 0),
+    )
+
+
+def monto_ahorro_neto(movimiento, subgastos_agrupados):
+    monto = float(movimiento.get("monto") or 0)
+    if not (
+        movimiento.get("tipo") == "Ahorro"
+        and movimiento.get("categoria", "").strip().lower() == CATEGORIA_AHORRO_FLEXIBLE.lower()
+    ):
+        return monto
+    return max(monto - total_detalles_movimiento(movimiento, subgastos_agrupados), 0)
+
+
+def ahorros_acumulados_por_categoria(movimientos, subgastos_agrupados):
+    acumulados = {}
+    for item in movimientos:
+        if item.get("tipo") != "Ahorro":
+            continue
+        categoria = item.get("categoria") or CATEGORIA_SIN_ASIGNAR
+        acumulados[categoria] = acumulados.get(categoria, 0) + monto_ahorro_neto(
+            item, subgastos_agrupados
+        )
+    return [
+        {"categoria": categoria, "monto": monto}
+        for categoria, monto in sorted(acumulados.items(), key=lambda par: (-par[1], par[0].lower()))
+    ]
+
+
 def categorias_efectivas_movimiento(movimiento, monto_efectivo, subgastos_agrupados):
     if not (
         movimiento.get("tipo") == "Gasto"
@@ -1870,11 +1928,12 @@ def calcular_dashboard(filtrar_periodo=False):
     hoy = fecha_hoy_chile()
     asegurar_sueldo_automatico(hoy)
     movimientos = leer_movimientos()
-    ahorros_acumulados = sum(
-        float(item.get("monto") or 0)
-        for item in movimientos
-        if item.get("tipo") == "Ahorro"
+    todos_movimientos_dashboard = movimientos
+    subgastos_agrupados = subgastos_por_movimiento()
+    ahorros_acumulados_categoria = ahorros_acumulados_por_categoria(
+        todos_movimientos_dashboard, subgastos_agrupados
     )
+    ahorros_acumulados = sum(item["monto"] for item in ahorros_acumulados_categoria)
     periodo_inicio = None
     periodo_fin = None
     saldo_anterior = 0
@@ -1928,17 +1987,21 @@ def calcular_dashboard(filtrar_periodo=False):
     ]
     ahorros_lista = [item for item in movimientos if item["tipo"] == "Ahorro"]
     descuentos_compartidos = descuentos_compras_compartidas(leer_deudas())
-    subgastos_agrupados = subgastos_por_movimiento()
     ingresos = sum(item["monto"] for item in ingresos_lista)
     gastos = sum(
         monto_efectivo_movimiento(item, descuentos_compartidos, subgastos_agrupados)
         for item in gastos_calculo_lista
     )
+    gastos += sum(
+        total_detalles_movimiento(item, subgastos_agrupados)
+        for item in ahorros_lista
+        if item.get("categoria", "").strip().lower() == CATEGORIA_AHORRO_FLEXIBLE.lower()
+    )
     deuda = sum(
         monto_efectivo_movimiento(item, descuentos_compartidos, subgastos_agrupados)
         for item in deudas_lista
     )
-    ahorros = sum(item["monto"] for item in ahorros_lista)
+    ahorros = sum(monto_ahorro_neto(item, subgastos_agrupados) for item in ahorros_lista)
     disponible = ingresos - gastos - deuda - ahorros
     cuota_semanal = disponible / semanas if semanas > 0 else 0
     return {
@@ -1952,6 +2015,7 @@ def calcular_dashboard(filtrar_periodo=False):
         "deuda": deuda,
         "ahorros": ahorros,
         "ahorros_acumulados": ahorros_acumulados,
+        "ahorros_acumulados_categoria": ahorros_acumulados_categoria,
         "balance": ingresos - gastos - deuda,
         "disponible": disponible,
         "semanas": semanas,
@@ -2200,6 +2264,9 @@ def eliminar_categoria():
         and categoria
         and categoria.lower() != CATEGORIA_SIN_ASIGNAR.lower()
         and not (tipo == "Gasto" and categoria.lower() == CATEGORIA_EFECTIVO.lower())
+        and not (
+            tipo == "Ahorro" and categoria.lower() == CATEGORIA_AHORRO_FLEXIBLE.lower()
+        )
     ):
         reemplazar_categoria_eliminada(tipo, categoria)
         escribir_categorias(
@@ -2276,7 +2343,7 @@ def agregar():
         if sum(item["monto"] for item in subgastos) > movimiento["monto"]:
             return Response("Los subgastos no pueden superar el monto del gasto.", status=400)
         ticket = guardar_movimiento(movimiento)
-        if movimiento["tipo"] == "Gasto" and movimiento["categoria"].lower() == CATEGORIA_EFECTIVO.lower():
+        if es_movimiento_detallable(movimiento):
             escribir_subgastos_movimiento(ticket, subgastos)
         return redirect(url_for("index"))
 
@@ -2306,7 +2373,7 @@ def agregar_por_tipo(tipo):
         if sum(item["monto"] for item in subgastos) > movimiento["monto"]:
             return Response("Los subgastos no pueden superar el monto del gasto.", status=400)
         ticket = guardar_movimiento(movimiento)
-        if tipo_movimiento == "Gasto" and movimiento["categoria"].lower() == CATEGORIA_EFECTIVO.lower():
+        if es_movimiento_detallable(movimiento):
             escribir_subgastos_movimiento(ticket, subgastos)
         return redirect(url_for("index"))
 
@@ -2352,6 +2419,11 @@ def editar(movimiento_id):
         return redirect(volver_a)
 
     movimiento = movimientos[movimiento_id]
+    if not volver_ciclo:
+        volver_ciclo = periodo_item_ciclo(movimiento, movimientos)
+        if volver_ciclo:
+            parametros_resumen["ciclo"] = volver_ciclo
+            volver_a = f"{url_for('resumen', **parametros_resumen)}#movimientos"
     if request.method == "POST":
         tipo = request.form.get("tipo", movimiento["tipo"])
         movimiento_anterior = movimiento.copy()
@@ -2371,10 +2443,7 @@ def editar(movimiento_id):
         if sum(item["monto"] for item in subgastos) > movimientos[movimiento_id]["monto"]:
             return Response("Los subgastos no pueden superar el monto del gasto.", status=400)
         escribir_movimientos(movimientos)
-        if (
-            movimientos[movimiento_id]["tipo"] == "Gasto"
-            and movimientos[movimiento_id]["categoria"].lower() == CATEGORIA_EFECTIVO.lower()
-        ):
+        if es_movimiento_detallable(movimientos[movimiento_id]):
             escribir_subgastos_movimiento(ticket_movimiento, subgastos)
         else:
             escribir_subgastos_movimiento(ticket_movimiento, [])
@@ -2394,8 +2463,7 @@ def editar(movimiento_id):
         subgastos=(
             leer_subgastos_efectivo(movimiento.get("ticket_movimiento"))
             if movimiento.get("ticket_movimiento")
-            and movimiento.get("tipo") == "Gasto"
-            and movimiento.get("categoria", "").strip().lower() == CATEGORIA_EFECTIVO.lower()
+            and es_movimiento_detallable(movimiento)
             else []
         ),
     )
@@ -2438,7 +2506,18 @@ def agregar_desde_resumen():
             "monto": float(request.form.get("monto", 0) or 0),
         }
     )
-    return redirect(f"{url_for('resumen')}#movimientos")
+    parametros_resumen = {}
+    ciclo = request.form.get("volver_ciclo", "").strip()
+    busqueda = request.form.get("volver_q", "").strip()
+    filtro_tipo = request.form.get("volver_tipo", "Todos")
+    if ciclo:
+        parametros_resumen["ciclo"] = ciclo
+    if busqueda:
+        parametros_resumen["q"] = busqueda
+    if filtro_tipo in TIPOS_VALIDOS:
+        parametros_resumen["tipo"] = filtro_tipo
+    parametros_resumen["agregar"] = "1"
+    return redirect(f"{url_for('resumen', **parametros_resumen)}#movimientos")
 
 
 @app.route("/gastos-fijos", methods=["GET", "POST"])
@@ -2981,6 +3060,7 @@ def resumen():
     )
     busqueda = request.args.get("q", "").strip()
     filtro_tipo = request.args.get("tipo", "Todos")
+    agregar_rapido = request.args.get("agregar") == "1"
     semanas, _, _ = calcular_semanas_restantes(fecha_hoy_chile(), periodo_fin)
     descuentos_compartidos = descuentos_compras_compartidas(leer_deudas())
     subgastos_agrupados = subgastos_por_movimiento()
@@ -2990,7 +3070,17 @@ def resumen():
         for item in movimientos
         if item["tipo"] == "Gasto"
     )
-    ahorros = sum(item["monto"] for item in movimientos if item["tipo"] == "Ahorro")
+    gastos += sum(
+        total_detalles_movimiento(item, subgastos_agrupados)
+        for item in movimientos
+        if item.get("tipo") == "Ahorro"
+        and item.get("categoria", "").strip().lower() == CATEGORIA_AHORRO_FLEXIBLE.lower()
+    )
+    ahorros = sum(
+        monto_ahorro_neto(item, subgastos_agrupados)
+        for item in movimientos
+        if item["tipo"] == "Ahorro"
+    )
     disponible = ingresos - gastos - ahorros
     cuota_semanal = disponible / semanas if semanas > 0 else 0
     totales = {}
@@ -3002,6 +3092,16 @@ def resumen():
             ):
                 clave = (item["tipo"], categoria)
                 totales[clave] = totales.get(clave, 0) + monto_categoria
+        elif item["tipo"] == "Ahorro" and item.get("categoria", "").strip().lower() == CATEGORIA_AHORRO_FLEXIBLE.lower():
+            clave = ("Ahorro", item["categoria"])
+            totales[clave] = totales.get(clave, 0) + monto_ahorro_neto(
+                item, subgastos_agrupados
+            )
+            for detalle in subgastos_agrupados.get(item.get("ticket_movimiento", ""), []):
+                clave_gasto = ("Gasto", detalle.get("categoria") or CATEGORIA_SIN_ASIGNAR)
+                totales[clave_gasto] = totales.get(clave_gasto, 0) + float(
+                    detalle.get("monto") or 0
+                )
         else:
             clave = (item["tipo"], item["categoria"])
             totales[clave] = totales.get(clave, 0) + monto
@@ -3093,6 +3193,10 @@ def resumen():
         movimientos_filtrados=movimientos_filtrados,
         busqueda=busqueda,
         filtro_tipo=filtro_tipo,
+        agregar_rapido=agregar_rapido,
+        ahorros_acumulados_categoria=ahorros_acumulados_por_categoria(
+            todos_movimientos, subgastos_agrupados
+        ),
     )
 
 
@@ -3177,6 +3281,56 @@ def exportar_movimientos_ciclo():
     hoja_efectivo.auto_filter.ref = hoja_efectivo.dimensions
     for columna, ancho in {"A": 16, "B": 18, "C": 30, "D": 18, "E": 24, "F": 34, "G": 20}.items():
         hoja_efectivo.column_dimensions[columna].width = ancho
+
+    hoja_flexible = libro.create_sheet("Ahorro flexible")
+    encabezados_flexible = [
+        "Fecha del ahorro", "Fecha del retiro", "Ahorro original", "Monto ahorrado",
+        "Categoría del retiro", "Descripción del retiro", "Monto retirado", "Saldo restante",
+    ]
+    hoja_flexible.append(encabezados_flexible)
+    for celda in hoja_flexible[1]:
+        celda.font = Font(bold=True, color="FFFFFF")
+        celda.fill = PatternFill("solid", fgColor="7C3AED")
+    todos_detalles = leer_subgastos_efectivo()
+    detalles_por_ticket = {}
+    for detalle in todos_detalles:
+        detalles_por_ticket.setdefault(detalle.get("ticket_movimiento", ""), []).append(detalle)
+    for movimiento in movimientos:
+        if not (
+            movimiento.get("tipo") == "Ahorro"
+            and movimiento.get("categoria", "").strip().lower()
+            == CATEGORIA_AHORRO_FLEXIBLE.lower()
+        ):
+            continue
+        detalles = detalles_por_ticket.get(movimiento.get("ticket_movimiento", ""), [])
+        saldo_restante = monto_ahorro_neto(movimiento, detalles_por_ticket)
+        for detalle in detalles:
+            hoja_flexible.append(
+                [
+                    fecha_movimiento(movimiento.get("fecha", "")),
+                    fecha_movimiento(detalle.get("fecha", ""))
+                    or fecha_movimiento(movimiento.get("fecha", "")),
+                    movimiento.get("descripcion", "") or CATEGORIA_AHORRO_FLEXIBLE,
+                    float(movimiento.get("monto") or 0),
+                    detalle.get("categoria", ""),
+                    detalle.get("descripcion", ""),
+                    float(detalle.get("monto") or 0),
+                    saldo_restante,
+                ]
+            )
+    for columna in ("A", "B"):
+        for celda in hoja_flexible[columna][1:]:
+            celda.number_format = "dd-mm-yyyy"
+    for columna in ("D", "G", "H"):
+        for celda in hoja_flexible[columna][1:]:
+            celda.number_format = '$' + '#,##0.00'
+    hoja_flexible.freeze_panes = "A2"
+    hoja_flexible.auto_filter.ref = hoja_flexible.dimensions
+    for columna, ancho in {
+        "A": 18, "B": 16, "C": 30, "D": 18,
+        "E": 24, "F": 34, "G": 18, "H": 18,
+    }.items():
+        hoja_flexible.column_dimensions[columna].width = ancho
 
     hoja_compartidas = libro.create_sheet("Compras compartidas")
     encabezados_compartidas = [

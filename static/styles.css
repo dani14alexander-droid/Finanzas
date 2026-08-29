@@ -1267,6 +1267,30 @@ select:focus {
   grid-row: 1 / span 2;
 }
 
+.savings-category-grid {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  margin-top: 16px;
+}
+
+.savings-category-grid article {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  display: grid;
+  gap: 6px;
+  padding: 14px;
+}
+
+.savings-category-grid span {
+  color: var(--muted);
+}
+
+.savings-category-grid strong {
+  font-size: 1.2rem;
+}
+
 .delete-form {
   border-top: 1px solid var(--line);
   margin-top: 24px;

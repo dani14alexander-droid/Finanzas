@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Resumen</title>
     <link rel="manifest" href="{{ url_for('static', filename='manifest.json') }}">
-    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css', v='20260829-7') }}">
   </head>
   <body>
     <header class="topbar">
@@ -149,6 +149,25 @@
         {% endif %}
       </section>
 
+      <section class="panel section-gap">
+        <div class="panel-header">
+          <h2>Ahorro acumulado por categoría</h2>
+          <span class="hint-inline">Aportes históricos menos retiros de ahorro flexible.</span>
+        </div>
+        {% if ahorros_acumulados_categoria %}
+          <div class="savings-category-grid">
+            {% for item in ahorros_acumulados_categoria %}
+              <article>
+                <span>{{ item.categoria }}</span>
+                <strong class="saving">{{ item.monto|moneda }}</strong>
+              </article>
+            {% endfor %}
+          </div>
+        {% else %}
+          <p class="empty">Todavía no hay ahorros registrados.</p>
+        {% endif %}
+      </section>
+
       <section class="panel section-gap" id="movimientos">
         <div class="panel-header">
           <h1>Modificar movimientos</h1>
@@ -175,7 +194,11 @@
         {% if movimientos_filtrados %}
           <div class="table-wrap movement-table-wrap">
             <button class="add-row-button" type="button" aria-label="Agregar movimiento">+</button>
-            <form id="quick-add-movement" method="post" action="{{ url_for('agregar_desde_resumen') }}"></form>
+            <form id="quick-add-movement" method="post" action="{{ url_for('agregar_desde_resumen') }}">
+              <input type="hidden" name="volver_ciclo" value="{{ ciclo_seleccionado }}">
+              <input type="hidden" name="volver_q" value="{{ busqueda }}">
+              <input type="hidden" name="volver_tipo" value="{{ filtro_tipo }}">
+            </form>
             <table>
               <thead>
                 <tr>
@@ -188,7 +211,7 @@
                 </tr>
               </thead>
               <tbody>
-                <tr class="inline-add-row" hidden>
+                <tr class="inline-add-row" {{ '' if agregar_rapido else 'hidden' }}>
                     <td><input form="quick-add-movement" type="date" name="fecha" required></td>
                     <td>
                       <select form="quick-add-movement" name="tipo" required>
@@ -246,6 +269,6 @@
     {% include "_categorias_datalist.html" %}
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.2.0"></script>
-    <script src="{{ url_for('static', filename='app.js') }}"></script>
+    <script src="{{ url_for('static', filename='app.js', v='20260829-8') }}"></script>
   </body>
 </html>

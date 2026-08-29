@@ -96,6 +96,10 @@ document.querySelectorAll(".add-row-button").forEach((button) => {
       row.querySelector("input, select")?.focus();
     }
   });
+  const openRow = button.closest(".movement-table-wrap")?.querySelector(".inline-add-row");
+  if (openRow && !openRow.hidden) {
+    openRow.querySelector('[name="categoria"]')?.focus();
+  }
 });
 
 document.querySelectorAll("[data-open-dialog]").forEach((button) => {
@@ -170,15 +174,31 @@ document.querySelectorAll(".cash-breakdown").forEach((breakdown) => {
   const type = form?.elements?.namedItem("tipo");
   const category = form?.elements?.namedItem("categoria");
   const categoryPicker = form?.querySelector(".category-picker");
+  const detailTitle = breakdown.querySelector("[data-detail-title]");
+  const detailHelp = breakdown.querySelector("[data-detail-help]");
 
   const updateCashVisibility = () => {
+    const normalizedCategory = category?.value.trim().toLocaleLowerCase("es");
     const isCashExpense =
       type?.value === "Gasto" &&
-      category?.value.trim().toLocaleLowerCase("es") === "efectivo";
-    breakdown.hidden = !isCashExpense;
+      normalizedCategory === "efectivo";
+    const isFlexibleSaving =
+      type?.value === "Ahorro" && normalizedCategory === "ahorro flexible";
+    const isDetailedMovement = isCashExpense || isFlexibleSaving;
+    breakdown.hidden = !isDetailedMovement;
     breakdown.querySelectorAll("input, button").forEach((control) => {
-      control.disabled = !isCashExpense;
+      control.disabled = !isDetailedMovement;
     });
+    if (detailTitle) {
+      detailTitle.textContent = isFlexibleSaving
+        ? "Retiros del ahorro flexible"
+        : "Desglose de gasto en efectivo";
+    }
+    if (detailHelp) {
+      detailHelp.textContent = isFlexibleSaving
+        ? "Registra aquí cada retiro y su destino. La suma no puede superar el ahorro."
+        : "La suma del detalle no puede superar el monto total.";
+    }
   };
 
   const setDefaultDate = (row) => {
