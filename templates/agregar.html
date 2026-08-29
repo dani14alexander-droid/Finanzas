@@ -76,6 +76,24 @@
             <input type="number" name="monto" min="0" step="0.01" value="{{ movimiento.monto if movimiento else '' }}" required>
           </label>
 
+          {% if tipo in [none, 'Gasto'] or (movimiento and movimiento.tipo == 'Gasto') %}
+            {% set detalles = subgastos|default([]) %}
+            <details class="cash-breakdown" {{ 'open' if detalles else '' }}>
+              <summary>Desglose de gasto en efectivo</summary>
+              <p>Usa la categoría <strong>Efectivo</strong> en el movimiento principal. La suma del detalle no puede superar el monto total.</p>
+              <div class="cash-breakdown-list">
+                {% for indice in range(6) %}
+                  {% set detalle = detalles[indice] if indice < detalles|length else none %}
+                  <div class="cash-breakdown-row">
+                    <input type="text" name="sub_categoria" list="categorias-gasto" value="{{ detalle.categoria if detalle else '' }}" placeholder="Categoría">
+                    <input type="text" name="sub_descripcion" value="{{ detalle.descripcion if detalle else '' }}" placeholder="Descripción opcional">
+                    <input type="number" name="sub_monto" min="0" step="0.01" value="{{ detalle.monto if detalle else '' }}" placeholder="Monto">
+                  </div>
+                {% endfor %}
+              </div>
+            </details>
+          {% endif %}
+
           <div class="actions">
             <a class="link-button" href="{{ volver_a or url_for('index') }}">Cancelar</a>
             <button type="submit">Guardar</button>

@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Editar deuda</title>
+    <link rel="manifest" href="{{ url_for('static', filename='manifest.json') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+  </head>
+  <body>
+    <header class="topbar">
+      <a class="brand" href="{{ url_for('index') }}">Finanzas</a>
+      <nav>
+        <a href="{{ url_for('index') }}">Dashboard</a>
+        <a href="{{ url_for('resumen') }}">Resumen</a>
+        <a href="{{ url_for('planificacion') }}">Planificacion</a>
+        <a href="{{ url_for('macrocategorias') }}">Macros</a>
+        <a href="{{ url_for('historico') }}">Historico</a>
+        <a href="{{ url_for('automatizacion') }}">Gastos fijos</a>
+        <a href="{{ url_for('deudas') }}">Deudas</a>
+      </nav>
+    </header>
+
+    <main class="container narrow">
+      <section class="panel">
+        <p class="eyebrow">Deuda pendiente</p>
+        <h1>Editar deuda</h1>
+        <form method="post" class="form" data-debt-form>
+          <label>
+            Tipo
+            <select name="tipo" required>
+              <option {{ 'selected' if item.tipo == 'Me deben' else '' }}>Me deben</option>
+              <option {{ 'selected' if item.tipo == 'Debo' else '' }}>Debo</option>
+            </select>
+          </label>
+
+          <label data-debt-mode {{ 'hidden' if item.tipo != 'Debo' else '' }}>
+            Modalidad
+            <select name="modalidad">
+              <option value="Simple" {{ 'selected' if item.modalidad == 'Simple' else '' }}>Deuda simple</option>
+              <option value="Cuotas" {{ 'selected' if item.modalidad == 'Cuotas' else '' }}>Compra en cuotas</option>
+              <option value="Prestamo" {{ 'selected' if item.modalidad == 'Prestamo' else '' }}>Prestamo recibido</option>
+            </select>
+          </label>
+
+          <label data-installments {{ 'hidden' if item.modalidad != 'Cuotas' else '' }}>
+            Numero de cuotas
+            <input type="number" name="cuotas_total" min="{{ [item.cuotas_pagadas, 1]|max }}" max="120" value="{{ item.cuotas_total or 1 }}">
+          </label>
+
+          <label>
+            Persona
+            <input type="text" name="persona" value="{{ item.persona }}" required>
+          </label>
+
+          <label>
+            Categoria
+            <input type="text" name="categoria" list="{{ lista_categoria_para_tipo(item.tipo) }}" data-category-list value="{{ item.categoria }}" required>
+          </label>
+          {% include "_categorias_datalist.html" %}
+
+          <label>
+            Gasto asociado (compra compartida)
+            <select name="gasto_asociado_id">
+              <option value="">Sin asociar</option>
+              {% for gasto in gastos_asociables %}
+                <option value="{{ gasto.id }}" {{ 'selected' if gasto.ticket_movimiento and gasto.ticket_movimiento == item.ticket_gasto_asociado else '' }}>
+                  {{ gasto.fecha }} · {{ gasto.categoria }} · {{ gasto.descripcion or 'Sin descripción' }} · {{ gasto.monto|moneda }}
+                </option>
+              {% endfor %}
+            </select>
+            <small>El monto pagado se descontará del gasto asociado en estadísticas y gráficos.</small>
+          </label>
+
+          <label>
+            Descripcion
+            <input type="text" name="descripcion" value="{{ item.descripcion }}">
+          </label>
+
+          <label>
+            Fecha
+            <input type="date" name="fecha" value="{{ item.fecha }}" required>
+          </label>
+
+          <label>
+            Monto
+            <input type="number" name="monto" min="0" step="0.01" value="{{ item.monto }}" required>
+          </label>
+
+          <div class="actions">
+            <a class="link-button" href="{{ url_for('deudas') }}">Cancelar</a>
+            <button type="submit">Guardar cambios</button>
+          </div>
+        </form>
+      </section>
+    </main>
+
+    <script src="{{ url_for('static', filename='app.js') }}"></script>
+  </body>
+</html>

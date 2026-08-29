@@ -87,6 +87,17 @@
             {% include "_categorias_datalist.html" %}
 
             <label>
+              Gasto asociado (compra compartida)
+              <select name="gasto_asociado_id">
+                <option value="">Sin asociar</option>
+                {% for gasto in gastos_asociables %}
+                  <option value="{{ gasto.id }}">{{ gasto.fecha }} · {{ gasto.categoria }} · {{ gasto.descripcion or 'Sin descripción' }} · {{ gasto.monto|moneda }}</option>
+                {% endfor %}
+              </select>
+              <small>Se descontará del gasto únicamente cuando la deuda se marque pagada.</small>
+            </label>
+
+            <label>
               Descripcion
               <input type="text" name="descripcion" placeholder="Detalle opcional">
             </label>

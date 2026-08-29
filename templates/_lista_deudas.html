@@ -7,6 +7,7 @@
           <span>
             {{ item.categoria }} · {{ item.fecha }} · {{ item.descripcion or "Sin descripcion" }}
             {% if item.modalidad == 'Cuotas' %} · cuota {{ item.cuotas_pagadas + 1 }} de {{ item.cuotas_total }}{% endif %}
+            {% if item.ticket_gasto_asociado %} · Gasto vinculado{% endif %}
           </span>
           <b class="{{ 'positive' if item.tipo == 'Me deben' else 'negative' }}">{{ item.monto|moneda }}</b>
         </div>
@@ -17,9 +18,12 @@
           </label>
           <button type="submit">{{ 'Pagar cuota' if item.modalidad == 'Cuotas' else 'Marcar pagada' }}</button>
         </form>
-        <form class="debt-delete" method="post" action="{{ url_for('eliminar_deuda', deuda_id=item.id) }}" data-confirm-delete>
-          <button type="submit" class="danger-button">Eliminar</button>
-        </form>
+        <div class="debt-item-actions">
+          <a class="table-action" href="{{ url_for('editar_deuda', deuda_id=item.id) }}">Editar</a>
+          <form class="debt-delete" method="post" action="{{ url_for('eliminar_deuda', deuda_id=item.id) }}" data-confirm-delete>
+            <button type="submit" class="danger-button">Eliminar</button>
+          </form>
+        </div>
       </div>
     {% endfor %}
   </div>

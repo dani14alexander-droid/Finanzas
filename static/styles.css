@@ -829,6 +829,19 @@ th {
   margin: 0;
 }
 
+.debt-item-actions {
+  align-self: end;
+  display: grid;
+  gap: 8px;
+}
+
+.debt-item-actions .table-action,
+.debt-item-actions button {
+  justify-content: center;
+  text-align: center;
+  width: 100%;
+}
+
 .debt-payment button,
 .debt-delete button {
   white-space: nowrap;
@@ -1184,6 +1197,34 @@ select:focus {
   margin-top: 8px;
 }
 
+.cash-breakdown {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 14px;
+}
+
+.cash-breakdown summary {
+  color: var(--primary);
+  cursor: pointer;
+  font-weight: 800;
+}
+
+.cash-breakdown p {
+  color: var(--muted);
+  margin: 10px 0;
+}
+
+.cash-breakdown-list {
+  display: grid;
+  gap: 8px;
+}
+
+.cash-breakdown-row {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: minmax(140px, 0.8fr) minmax(180px, 1fr) minmax(110px, 0.45fr);
+}
+
 .delete-form {
   border-top: 1px solid var(--line);
   margin-top: 24px;
@@ -1322,7 +1363,8 @@ select:focus {
   .filter-bar,
   .salary-form,
   .category-create-form,
-  .category-list {
+  .category-list,
+  .cash-breakdown-row {
     grid-template-columns: 1fr;
   }
 
@@ -1437,6 +1479,7 @@ select:focus {
   }
 
   .debt-payment button,
+  .debt-item-actions,
   .debt-delete,
   .debt-delete button {
     width: 100%;
