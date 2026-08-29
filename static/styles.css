@@ -793,7 +793,7 @@ th {
   border-radius: 8px;
   display: grid;
   gap: 12px;
-  grid-template-columns: minmax(180px, 1fr) 150px auto;
+  grid-template-columns: minmax(180px, 1fr) minmax(300px, auto) max-content;
   padding: 14px;
 }
 
@@ -820,12 +820,18 @@ th {
   align-items: end;
   display: grid;
   gap: 10px;
-  grid-template-columns: minmax(150px, 1fr) auto;
+  grid-template-columns: minmax(180px, 1fr) max-content;
+  min-width: 0;
 }
 
 .debt-delete {
   align-self: end;
   margin: 0;
+}
+
+.debt-payment button,
+.debt-delete button {
+  white-space: nowrap;
 }
 
 .status {

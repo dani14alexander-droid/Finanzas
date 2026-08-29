@@ -36,7 +36,10 @@ CATEGORIAS_PATH = DATA_DIR / "categorias.csv"
 ENV_PATH = BASE_DIR / ".env"
 LINK_PATH = BASE_DIR / "link.txt"
 DB_LISTA = False
-COLUMNAS = ["fecha", "tipo", "categoria", "descripcion", "monto", "ticket_deuda", "origen_deuda"]
+COLUMNAS = [
+    "fecha", "tipo", "categoria", "descripcion", "monto", "ticket_deuda",
+    "origen_deuda", "periodo_forzado",
+]
 AUTOMATIZACION_COLUMNAS = [
     "tipo",
     "categoria",
@@ -186,7 +189,8 @@ def asegurar_db():
                     descripcion TEXT NOT NULL DEFAULT '',
                     monto DOUBLE PRECISION NOT NULL DEFAULT 0,
                     ticket_deuda TEXT NOT NULL DEFAULT '',
-                    origen_deuda TEXT NOT NULL DEFAULT ''
+                    origen_deuda TEXT NOT NULL DEFAULT '',
+                    periodo_forzado TEXT NOT NULL DEFAULT ''
                 )
                 """
             )
@@ -259,6 +263,7 @@ def asegurar_db():
             )
             cursor.execute("ALTER TABLE movimientos ADD COLUMN IF NOT EXISTS ticket_deuda TEXT NOT NULL DEFAULT ''")
             cursor.execute("ALTER TABLE movimientos ADD COLUMN IF NOT EXISTS origen_deuda TEXT NOT NULL DEFAULT ''")
+            cursor.execute("ALTER TABLE movimientos ADD COLUMN IF NOT EXISTS periodo_forzado TEXT NOT NULL DEFAULT ''")
             cursor.execute("ALTER TABLE deudas ADD COLUMN IF NOT EXISTS modalidad TEXT NOT NULL DEFAULT ''")
             cursor.execute("ALTER TABLE deudas ADD COLUMN IF NOT EXISTS cuotas_total INTEGER NOT NULL DEFAULT 1")
             cursor.execute("ALTER TABLE deudas ADD COLUMN IF NOT EXISTS cuotas_pagadas INTEGER NOT NULL DEFAULT 0")
@@ -369,7 +374,7 @@ def leer_movimientos():
         with conectar_db() as conexion:
             with conexion.cursor() as cursor:
                 cursor.execute(
-                    "SELECT fecha, tipo, categoria, descripcion, monto, ticket_deuda, origen_deuda FROM movimientos ORDER BY id"
+                    "SELECT fecha, tipo, categoria, descripcion, monto, ticket_deuda, origen_deuda, periodo_forzado FROM movimientos ORDER BY id"
                 )
                 movimientos = []
                 for indice, fila in enumerate(cursor.fetchall()):
@@ -402,8 +407,8 @@ def escribir_movimientos(movimientos):
                 cursor.execute("TRUNCATE movimientos RESTART IDENTITY")
                 cursor.executemany(
                     """
-                    INSERT INTO movimientos (fecha, tipo, categoria, descripcion, monto, ticket_deuda, origen_deuda)
-                    VALUES (%s, %s, %s, %s, %s, %s, %s)
+                    INSERT INTO movimientos (fecha, tipo, categoria, descripcion, monto, ticket_deuda, origen_deuda, periodo_forzado)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
                     """,
                     [
                         (
@@ -414,6 +419,7 @@ def escribir_movimientos(movimientos):
                             float(movimiento.get("monto") or 0),
                             movimiento.get("ticket_deuda", ""),
                             movimiento.get("origen_deuda", ""),
+                            movimiento.get("periodo_forzado", ""),
                         )
                         for movimiento in movimientos
                     ],
@@ -435,8 +441,8 @@ def guardar_movimiento(movimiento):
             with conexion.cursor() as cursor:
                 cursor.execute(
                     """
-                    INSERT INTO movimientos (fecha, tipo, categoria, descripcion, monto, ticket_deuda, origen_deuda)
-                    VALUES (%s, %s, %s, %s, %s, %s, %s)
+                    INSERT INTO movimientos (fecha, tipo, categoria, descripcion, monto, ticket_deuda, origen_deuda, periodo_forzado)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
                     """,
                     (
                         movimiento.get("fecha", ""),
@@ -446,6 +452,7 @@ def guardar_movimiento(movimiento):
                         float(movimiento.get("monto") or 0),
                         movimiento.get("ticket_deuda", ""),
                         movimiento.get("origen_deuda", ""),
+                        movimiento.get("periodo_forzado", ""),
                     ),
                 )
         return
@@ -977,6 +984,13 @@ def periodo_movimiento_ciclo(valor, movimientos=None):
     return clave_ciclo(fecha, movimientos)
 
 
+def periodo_item_ciclo(movimiento, movimientos=None):
+    periodo_forzado = (movimiento.get("periodo_forzado") or "").strip()
+    if periodo_forzado:
+        return periodo_forzado
+    return periodo_movimiento_ciclo(movimiento.get("fecha", ""), movimientos)
+
+
 def pago_deuda_genera_movimiento(deuda, fecha_pago, movimientos):
     tiene_movimiento_origen = deuda.get("tipo") == "Me deben" or (
         deuda.get("tipo") == "Debo" and deuda.get("modalidad") == "Prestamo"
@@ -1022,7 +1036,11 @@ def saldo_ciclo_anterior(movimientos, fecha_inicio):
     saldo = 0
     for item in movimientos:
         fecha = fecha_movimiento(item.get("fecha", ""))
-        if not fecha or not (inicio_anterior <= fecha <= fin_anterior):
+        periodo_forzado = (item.get("periodo_forzado") or "").strip()
+        if periodo_forzado:
+            if periodo_forzado != inicio_anterior.isoformat():
+                continue
+        elif not fecha or not (inicio_anterior <= fecha <= fin_anterior):
             continue
         monto = float(item.get("monto") or 0)
         if item.get("tipo") == "Ingreso":
@@ -1122,7 +1140,11 @@ def opciones_ciclos(movimientos):
     for clave in sorted(claves, reverse=True):
         inicio, fin = rango_ciclo(clave, movimientos)
         tiene_informacion = any(
-            (fecha := fecha_movimiento(item.get("fecha", ""))) and inicio <= fecha <= fin
+            (
+                periodo_item_ciclo(item, movimientos) == clave
+                if item.get("periodo_forzado")
+                else (fecha := fecha_movimiento(item.get("fecha", ""))) and inicio <= fecha <= fin
+            )
             for item in movimientos
         )
         etiqueta = etiqueta_ciclo(clave)
@@ -1143,7 +1165,11 @@ def movimientos_de_ciclo(movimientos, clave):
     items = [
         item
         for item in movimientos
-        if (fecha := fecha_movimiento(item.get("fecha", ""))) and inicio <= fecha <= fin
+        if (
+            periodo_item_ciclo(item, movimientos) == clave
+            if item.get("periodo_forzado")
+            else (fecha := fecha_movimiento(item.get("fecha", ""))) and inicio <= fecha <= fin
+        )
     ]
     if not items:
         return [], inicio, fin
@@ -1343,7 +1369,7 @@ def movimiento_coincide_automatizacion(movimiento, automatizacion):
 
 
 def actualizar_automatizaciones_por_movimiento(movimiento, movimientos_actuales):
-    periodo = periodo_movimiento_ciclo(movimiento.get("fecha", ""), movimientos_actuales)
+    periodo = periodo_item_ciclo(movimiento, movimientos_actuales)
     if not periodo:
         return
 
@@ -1355,7 +1381,7 @@ def actualizar_automatizaciones_por_movimiento(movimiento, movimientos_actuales)
         if not movimiento_coincide_automatizacion(movimiento, item):
             continue
         existe_movimiento = any(
-            periodo_movimiento_ciclo(actual.get("fecha", ""), movimientos_actuales) == periodo
+            periodo_item_ciclo(actual, movimientos_actuales) == periodo
             and movimiento_coincide_automatizacion(actual, item)
             for actual in movimientos_actuales
         )
@@ -1373,17 +1399,34 @@ def sincronizar_automatizaciones_confirmadas():
     automatizaciones = leer_automatizaciones()
     movimientos = leer_movimientos()
     periodo = periodo_actual()
+    inicio_periodo, _ = rango_ciclo(periodo, movimientos)
+    inicio_ventana = inicio_periodo - timedelta(days=7)
     hubo_cambios = False
+    hubo_cambios_movimientos = False
 
     for item in automatizaciones:
         if esta_anulada(item, periodo):
             continue
 
-        existe_en_periodo_actual = any(
-            periodo_movimiento_ciclo(movimiento.get("fecha", ""), movimientos) == periodo
-            and movimiento_coincide_automatizacion(movimiento, item)
-            for movimiento in movimientos
-        )
+        existe_en_periodo_actual = False
+        for movimiento in movimientos:
+            if not movimiento_coincide_automatizacion(movimiento, item):
+                continue
+            fecha = fecha_movimiento(movimiento.get("fecha", ""))
+            if periodo_item_ciclo(movimiento, movimientos) == periodo:
+                existe_en_periodo_actual = True
+                break
+            if (
+                item.get("tipo") == "Gasto"
+                and movimiento.get("tipo") == "Gasto"
+                and fecha
+                and inicio_ventana <= fecha < inicio_periodo
+                and not movimiento.get("periodo_forzado")
+            ):
+                movimiento["periodo_forzado"] = periodo
+                existe_en_periodo_actual = True
+                hubo_cambios_movimientos = True
+                break
         if existe_en_periodo_actual and item.get("ultimo_confirmado") != periodo:
             item["ultimo_confirmado"] = periodo
             item["ticket_ultimo"] = ""
@@ -1394,7 +1437,7 @@ def sincronizar_automatizaciones_confirmadas():
         if not periodo_confirmado:
             continue
         existe_movimiento = any(
-            periodo_movimiento_ciclo(movimiento.get("fecha", ""), movimientos) == periodo_confirmado
+            periodo_item_ciclo(movimiento, movimientos) == periodo_confirmado
             and movimiento_coincide_automatizacion(movimiento, item)
             for movimiento in movimientos
         )
@@ -1405,6 +1448,8 @@ def sincronizar_automatizaciones_confirmadas():
 
     if hubo_cambios:
         escribir_automatizaciones(automatizaciones)
+    if hubo_cambios_movimientos:
+        escribir_movimientos(movimientos)
 
     return automatizaciones
 
@@ -1613,8 +1658,14 @@ def calcular_dashboard(filtrar_periodo=False):
         movimientos = [
             item
             for item in movimientos
-            if (fecha := fecha_movimiento(item["fecha"]))
-            and periodo_inicio <= fecha <= periodo_fin
+            if (
+                item.get("periodo_forzado") == periodo_inicio.isoformat()
+                or (
+                    not item.get("periodo_forzado")
+                    and (fecha := fecha_movimiento(item["fecha"]))
+                    and periodo_inicio <= fecha <= periodo_fin
+                )
+            )
         ]
         if abs(saldo_anterior) >= 0.01:
             movimientos.append(
@@ -1975,6 +2026,7 @@ def agregar():
             "categoria": request.form.get("categoria", "").strip(),
             "descripcion": request.form.get("descripcion", "").strip(),
             "monto": float(request.form.get("monto", 0) or 0),
+            "periodo_forzado": movimiento.get("periodo_forzado", ""),
         }
         guardar_movimiento(movimiento)
         return redirect(url_for("index"))
@@ -2212,6 +2264,17 @@ def confirmar_automatizacion(automatizacion_id):
     item = automatizaciones[automatizacion_id]
     descripcion = item["descripcion"] or item["categoria"]
     fecha = request.form.get("fecha") or proxima_fecha_mensual(item["dia_mes"])
+    movimientos = leer_movimientos()
+    periodo = periodo_actual()
+    inicio_periodo, _ = rango_ciclo(periodo, movimientos)
+    fecha_confirmada = fecha_movimiento(fecha)
+    periodo_forzado = ""
+    if (
+        item.get("tipo") == "Gasto"
+        and fecha_confirmada
+        and inicio_periodo - timedelta(days=7) <= fecha_confirmada < inicio_periodo
+    ):
+        periodo_forzado = periodo
     guardar_movimiento(
         {
             "fecha": fecha,
@@ -2219,9 +2282,10 @@ def confirmar_automatizacion(automatizacion_id):
             "categoria": item["categoria"],
             "descripcion": descripcion,
             "monto": item["monto"],
+            "periodo_forzado": periodo_forzado,
         }
     )
-    item["ultimo_confirmado"] = periodo_movimiento_ciclo(fecha) or periodo_actual()
+    item["ultimo_confirmado"] = periodo_forzado or periodo_movimiento_ciclo(fecha, movimientos) or periodo
     item["ticket_ultimo"] = ""
     item["ultimo_anulado"] = ""
     item["razon_anulado"] = ""
