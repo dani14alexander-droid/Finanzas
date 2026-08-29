@@ -1164,6 +1164,10 @@ label {
   gap: 8px;
 }
 
+[hidden] {
+  display: none !important;
+}
+
 input,
 select {
   max-width: 100%;
@@ -1222,7 +1226,19 @@ select:focus {
 .cash-breakdown-row {
   display: grid;
   gap: 8px;
-  grid-template-columns: minmax(140px, 0.8fr) minmax(180px, 1fr) minmax(110px, 0.45fr);
+  grid-template-columns: minmax(135px, 0.65fr) minmax(130px, 0.75fr) minmax(170px, 1fr) minmax(100px, 0.45fr) 42px;
+}
+
+.cash-add-button {
+  margin-top: 12px;
+}
+
+.cash-remove-button {
+  align-self: stretch;
+  background: var(--danger-soft);
+  color: var(--negative);
+  min-height: 44px;
+  padding: 6px;
 }
 
 .delete-form {

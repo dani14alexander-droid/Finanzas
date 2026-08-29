@@ -161,6 +161,43 @@ document.querySelectorAll("[data-debt-form]").forEach((form) => {
   updateDebtFields();
 });
 
+document.querySelectorAll(".cash-breakdown").forEach((breakdown) => {
+  const list = breakdown.querySelector("[data-cash-breakdown-list]");
+  const template = breakdown.querySelector("[data-cash-breakdown-template]");
+  const addButton = breakdown.querySelector("[data-add-cash]");
+  const mainDate = breakdown.closest("form")?.elements?.namedItem("fecha");
+
+  const setDefaultDate = (row) => {
+    const dateInput = row.querySelector('input[name="sub_fecha"]');
+    if (dateInput && !dateInput.value) {
+      dateInput.value = mainDate?.value || "";
+    }
+  };
+
+  addButton?.addEventListener("click", () => {
+    const row = template.content.firstElementChild.cloneNode(true);
+    setDefaultDate(row);
+    list.append(row);
+    row.querySelector('input[name="sub_categoria"]')?.focus();
+  });
+
+  list?.addEventListener("click", (event) => {
+    const removeButton = event.target.closest("[data-remove-cash]");
+    if (!removeButton) {
+      return;
+    }
+    const rows = list.querySelectorAll(".cash-breakdown-row");
+    const row = removeButton.closest(".cash-breakdown-row");
+    if (rows.length > 1) {
+      row.remove();
+      return;
+    }
+    row.querySelectorAll("input").forEach((input) => {
+      input.value = input.name === "sub_fecha" ? mainDate?.value || "" : "";
+    });
+  });
+});
+
 document.querySelectorAll(".reason-dialog").forEach((dialog) => {
   dialog.addEventListener("click", (event) => {
     if (event.target === dialog) {

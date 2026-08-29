@@ -74,7 +74,7 @@ MACRO_CATEGORIA_COLUMNAS = ["tipo", "categoria", "macro"]
 CATEGORIA_COLUMNAS = ["tipo", "categoria"]
 CATEGORIA_SIN_ASIGNAR = "Sin categoría"
 CATEGORIA_EFECTIVO = "Efectivo"
-SUBGASTO_COLUMNAS = ["ticket_movimiento", "categoria", "descripcion", "monto"]
+SUBGASTO_COLUMNAS = ["ticket_movimiento", "fecha", "categoria", "descripcion", "monto"]
 MACROS_ASIGNABLES = [
     "Ahorro principal",
     "Alimentacion",
@@ -223,6 +223,7 @@ def asegurar_db():
                 CREATE TABLE IF NOT EXISTS subgastos_efectivo (
                     id BIGSERIAL PRIMARY KEY,
                     ticket_movimiento TEXT NOT NULL DEFAULT '',
+                    fecha TEXT NOT NULL DEFAULT '',
                     categoria TEXT NOT NULL DEFAULT '',
                     descripcion TEXT NOT NULL DEFAULT '',
                     monto DOUBLE PRECISION NOT NULL DEFAULT 0
@@ -282,6 +283,7 @@ def asegurar_db():
             cursor.execute("ALTER TABLE movimientos ADD COLUMN IF NOT EXISTS origen_deuda TEXT NOT NULL DEFAULT ''")
             cursor.execute("ALTER TABLE movimientos ADD COLUMN IF NOT EXISTS periodo_forzado TEXT NOT NULL DEFAULT ''")
             cursor.execute("ALTER TABLE movimientos ADD COLUMN IF NOT EXISTS ticket_movimiento TEXT NOT NULL DEFAULT ''")
+            cursor.execute("ALTER TABLE subgastos_efectivo ADD COLUMN IF NOT EXISTS fecha TEXT NOT NULL DEFAULT ''")
             cursor.execute("ALTER TABLE deudas ADD COLUMN IF NOT EXISTS modalidad TEXT NOT NULL DEFAULT ''")
             cursor.execute("ALTER TABLE deudas ADD COLUMN IF NOT EXISTS cuotas_total INTEGER NOT NULL DEFAULT 1")
             cursor.execute("ALTER TABLE deudas ADD COLUMN IF NOT EXISTS cuotas_pagadas INTEGER NOT NULL DEFAULT 0")
@@ -511,12 +513,12 @@ def leer_subgastos_efectivo(ticket_movimiento=None):
             with conexion.cursor() as cursor:
                 if ticket_movimiento:
                     cursor.execute(
-                        "SELECT ticket_movimiento, categoria, descripcion, monto FROM subgastos_efectivo WHERE ticket_movimiento = %s ORDER BY id",
+                        "SELECT ticket_movimiento, fecha, categoria, descripcion, monto FROM subgastos_efectivo WHERE ticket_movimiento = %s ORDER BY id",
                         (ticket_movimiento,),
                     )
                 else:
                     cursor.execute(
-                        "SELECT ticket_movimiento, categoria, descripcion, monto FROM subgastos_efectivo ORDER BY id"
+                        "SELECT ticket_movimiento, fecha, categoria, descripcion, monto FROM subgastos_efectivo ORDER BY id"
                     )
                 return [
                     {**dict(fila), "monto": float(fila.get("monto") or 0)}
@@ -537,6 +539,7 @@ def escribir_subgastos_movimiento(ticket_movimiento, subgastos):
     subgastos = [
         {
             "ticket_movimiento": ticket_movimiento,
+            "fecha": item.get("fecha", ""),
             "categoria": item.get("categoria", "").strip(),
             "descripcion": item.get("descripcion", "").strip(),
             "monto": float(item.get("monto") or 0),
@@ -553,9 +556,9 @@ def escribir_subgastos_movimiento(ticket_movimiento, subgastos):
                     (ticket_movimiento,),
                 )
                 cursor.executemany(
-                    "INSERT INTO subgastos_efectivo (ticket_movimiento, categoria, descripcion, monto) VALUES (%s, %s, %s, %s)",
+                    "INSERT INTO subgastos_efectivo (ticket_movimiento, fecha, categoria, descripcion, monto) VALUES (%s, %s, %s, %s, %s)",
                     [
-                        (item["ticket_movimiento"], item["categoria"], item["descripcion"], item["monto"])
+                        (item["ticket_movimiento"], item["fecha"], item["categoria"], item["descripcion"], item["monto"])
                         for item in subgastos
                     ],
                 )
@@ -569,7 +572,8 @@ def escribir_subgastos_movimiento(ticket_movimiento, subgastos):
         writer.writerows(existentes + subgastos)
 
 
-def subgastos_desde_formulario():
+def subgastos_desde_formulario(fecha_predeterminada=""):
+    fechas = request.form.getlist("sub_fecha")
     categorias = request.form.getlist("sub_categoria")
     descripciones = request.form.getlist("sub_descripcion")
     montos = request.form.getlist("sub_monto")
@@ -582,6 +586,7 @@ def subgastos_desde_formulario():
         if categoria.strip() and monto > 0:
             items.append(
                 {
+                    "fecha": fechas[indice] if indice < len(fechas) and fechas[indice] else fecha_predeterminada,
                     "categoria": categoria.strip(),
                     "descripcion": descripciones[indice].strip() if indice < len(descripciones) else "",
                     "monto": monto,
@@ -1189,10 +1194,21 @@ def descuentos_compras_compartidas(deudas):
     return descuentos
 
 
-def monto_efectivo_movimiento(movimiento, descuentos):
+def monto_efectivo_movimiento(movimiento, descuentos, subgastos_agrupados=None):
     monto = float(movimiento.get("monto") or 0)
     if movimiento.get("tipo") != "Gasto":
         return monto
+    if (
+        movimiento.get("categoria", "").strip().lower() == CATEGORIA_EFECTIVO.lower()
+        and subgastos_agrupados is not None
+    ):
+        return min(
+            sum(
+                float(item.get("monto") or 0)
+                for item in subgastos_agrupados.get(movimiento.get("ticket_movimiento", ""), [])
+            ),
+            monto,
+        )
     return max(monto - descuentos.get(movimiento.get("ticket_movimiento", ""), 0), 0)
 
 
@@ -1211,7 +1227,7 @@ def categorias_efectivas_movimiento(movimiento, monto_efectivo, subgastos_agrupa
         return [(movimiento.get("categoria") or CATEGORIA_SIN_ASIGNAR, monto_efectivo)]
     detalles = subgastos_agrupados.get(movimiento.get("ticket_movimiento", ""), [])
     if not detalles:
-        return [(CATEGORIA_EFECTIVO, monto_efectivo)]
+        return []
     resultado = []
     restante = monto_efectivo
     for detalle in detalles:
@@ -1219,8 +1235,6 @@ def categorias_efectivas_movimiento(movimiento, monto_efectivo, subgastos_agrupa
         if monto > 0:
             resultado.append((detalle.get("categoria") or CATEGORIA_SIN_ASIGNAR, monto))
             restante -= monto
-    if restante > 0.009:
-        resultado.append(("Efectivo sin detallar", restante))
     return resultado
 
 
@@ -1902,16 +1916,28 @@ def calcular_dashboard(filtrar_periodo=False):
         for item in movimientos
         if item["tipo"] == "Gasto" and item.get("categoria", "").strip().lower() == "deuda"
     ]
-    gastos_lista = [
+    gastos_calculo_lista = [
         item
         for item in movimientos
         if item["tipo"] == "Gasto" and item not in deudas_lista
     ]
+    gastos_lista = [
+        item
+        for item in gastos_calculo_lista
+        if item.get("categoria", "").strip().lower() != CATEGORIA_EFECTIVO.lower()
+    ]
     ahorros_lista = [item for item in movimientos if item["tipo"] == "Ahorro"]
     descuentos_compartidos = descuentos_compras_compartidas(leer_deudas())
+    subgastos_agrupados = subgastos_por_movimiento()
     ingresos = sum(item["monto"] for item in ingresos_lista)
-    gastos = sum(monto_efectivo_movimiento(item, descuentos_compartidos) for item in gastos_lista)
-    deuda = sum(monto_efectivo_movimiento(item, descuentos_compartidos) for item in deudas_lista)
+    gastos = sum(
+        monto_efectivo_movimiento(item, descuentos_compartidos, subgastos_agrupados)
+        for item in gastos_calculo_lista
+    )
+    deuda = sum(
+        monto_efectivo_movimiento(item, descuentos_compartidos, subgastos_agrupados)
+        for item in deudas_lista
+    )
     ahorros = sum(item["monto"] for item in ahorros_lista)
     disponible = ingresos - gastos - deuda - ahorros
     cuota_semanal = disponible / semanas if semanas > 0 else 0
@@ -2246,7 +2272,7 @@ def agregar():
             "descripcion": request.form.get("descripcion", "").strip(),
             "monto": float(request.form.get("monto", 0) or 0),
         }
-        subgastos = subgastos_desde_formulario()
+        subgastos = subgastos_desde_formulario(movimiento["fecha"])
         if sum(item["monto"] for item in subgastos) > movimiento["monto"]:
             return Response("Los subgastos no pueden superar el monto del gasto.", status=400)
         ticket = guardar_movimiento(movimiento)
@@ -2276,7 +2302,7 @@ def agregar_por_tipo(tipo):
             "descripcion": request.form.get("descripcion", "").strip(),
             "monto": float(request.form.get("monto", 0) or 0),
         }
-        subgastos = subgastos_desde_formulario()
+        subgastos = subgastos_desde_formulario(movimiento["fecha"])
         if sum(item["monto"] for item in subgastos) > movimiento["monto"]:
             return Response("Los subgastos no pueden superar el monto del gasto.", status=400)
         ticket = guardar_movimiento(movimiento)
@@ -2341,7 +2367,7 @@ def editar(movimiento_id):
             "ticket_deuda": movimiento.get("ticket_deuda", ""),
             "origen_deuda": movimiento.get("origen_deuda", ""),
         }
-        subgastos = subgastos_desde_formulario()
+        subgastos = subgastos_desde_formulario(movimientos[movimiento_id]["fecha"])
         if sum(item["monto"] for item in subgastos) > movimientos[movimiento_id]["monto"]:
             return Response("Los subgastos no pueden superar el monto del gasto.", status=400)
         escribir_movimientos(movimientos)
@@ -2951,9 +2977,10 @@ def resumen():
     filtro_tipo = request.args.get("tipo", "Todos")
     semanas, _, _ = calcular_semanas_restantes(fecha_hoy_chile(), periodo_fin)
     descuentos_compartidos = descuentos_compras_compartidas(leer_deudas())
+    subgastos_agrupados = subgastos_por_movimiento()
     ingresos = sum(item["monto"] for item in movimientos if item["tipo"] == "Ingreso")
     gastos = sum(
-        monto_efectivo_movimiento(item, descuentos_compartidos)
+        monto_efectivo_movimiento(item, descuentos_compartidos, subgastos_agrupados)
         for item in movimientos
         if item["tipo"] == "Gasto"
     )
@@ -2961,9 +2988,8 @@ def resumen():
     disponible = ingresos - gastos - ahorros
     cuota_semanal = disponible / semanas if semanas > 0 else 0
     totales = {}
-    subgastos_agrupados = subgastos_por_movimiento()
     for item in movimientos:
-        monto = monto_efectivo_movimiento(item, descuentos_compartidos)
+        monto = monto_efectivo_movimiento(item, descuentos_compartidos, subgastos_agrupados)
         if item["tipo"] == "Gasto":
             for categoria, monto_categoria in categorias_efectivas_movimiento(
                 item, monto, subgastos_agrupados
@@ -2997,7 +3023,7 @@ def resumen():
     )
 
     deuda = sum(
-        monto_efectivo_movimiento(item, descuentos_compartidos)
+        monto_efectivo_movimiento(item, descuentos_compartidos, subgastos_agrupados)
         for item in movimientos
         if item.get("tipo") == "Gasto" and "deuda" in (item.get("categoria") or "").lower()
     )
@@ -3113,8 +3139,8 @@ def exportar_movimientos_ciclo():
 
     hoja_efectivo = libro.create_sheet("Efectivo")
     encabezados_efectivo = [
-        "Fecha", "Gasto original", "Monto original", "Categoría del subgasto",
-        "Descripción del subgasto", "Monto del subgasto",
+        "Fecha del gasto", "Fecha del subgasto", "Gasto original", "Monto original",
+        "Categoría del subgasto", "Descripción del subgasto", "Monto del subgasto",
     ]
     hoja_efectivo.append(encabezados_efectivo)
     for celda in hoja_efectivo[1]:
@@ -3127,6 +3153,7 @@ def exportar_movimientos_ciclo():
         hoja_efectivo.append(
             [
                 fecha_movimiento(movimiento.get("fecha", "")),
+                fecha_movimiento(detalle.get("fecha", "")) or fecha_movimiento(movimiento.get("fecha", "")),
                 movimiento.get("descripcion", "") or CATEGORIA_EFECTIVO,
                 float(movimiento.get("monto") or 0),
                 detalle.get("categoria", ""),
@@ -3134,14 +3161,15 @@ def exportar_movimientos_ciclo():
                 float(detalle.get("monto") or 0),
             ]
         )
-    for celda in hoja_efectivo["A"][1:]:
-        celda.number_format = "dd-mm-yyyy"
-    for columna in ("C", "F"):
+    for columna in ("A", "B"):
+        for celda in hoja_efectivo[columna][1:]:
+            celda.number_format = "dd-mm-yyyy"
+    for columna in ("D", "G"):
         for celda in hoja_efectivo[columna][1:]:
             celda.number_format = '$' + '#,##0.00'
     hoja_efectivo.freeze_panes = "A2"
     hoja_efectivo.auto_filter.ref = hoja_efectivo.dimensions
-    for columna, ancho in {"A": 14, "B": 30, "C": 18, "D": 24, "E": 34, "F": 20}.items():
+    for columna, ancho in {"A": 16, "B": 18, "C": 30, "D": 18, "E": 24, "F": 34, "G": 20}.items():
         hoja_efectivo.column_dimensions[columna].width = ancho
 
     hoja_compartidas = libro.create_sheet("Compras compartidas")

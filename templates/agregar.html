@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>{{ titulo or "Agregar movimiento" }}</title>
     <link rel="manifest" href="{{ url_for('static', filename='manifest.json') }}">
-    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css', v='20260829-3') }}">
   </head>
   <body>
     <header class="topbar">
@@ -81,16 +81,35 @@
             <details class="cash-breakdown" {{ 'open' if detalles else '' }}>
               <summary>Desglose de gasto en efectivo</summary>
               <p>Usa la categoría <strong>Efectivo</strong> en el movimiento principal. La suma del detalle no puede superar el monto total.</p>
-              <div class="cash-breakdown-list">
-                {% for indice in range(6) %}
-                  {% set detalle = detalles[indice] if indice < detalles|length else none %}
+              <div class="cash-breakdown-list" data-cash-breakdown-list>
+                {% for detalle in detalles %}
                   <div class="cash-breakdown-row">
-                    <input type="text" name="sub_categoria" list="categorias-gasto" value="{{ detalle.categoria if detalle else '' }}" placeholder="Categoría">
-                    <input type="text" name="sub_descripcion" value="{{ detalle.descripcion if detalle else '' }}" placeholder="Descripción opcional">
-                    <input type="number" name="sub_monto" min="0" step="0.01" value="{{ detalle.monto if detalle else '' }}" placeholder="Monto">
+                    <input type="date" name="sub_fecha" value="{{ detalle.fecha or (movimiento.fecha if movimiento else '') }}" aria-label="Fecha del subgasto">
+                    <input type="text" name="sub_categoria" list="categorias-gasto" value="{{ detalle.categoria }}" placeholder="Categoría">
+                    <input type="text" name="sub_descripcion" value="{{ detalle.descripcion }}" placeholder="Descripción opcional">
+                    <input type="number" name="sub_monto" min="0" step="0.01" value="{{ detalle.monto }}" placeholder="Monto">
+                    <button type="button" class="cash-remove-button" data-remove-cash aria-label="Eliminar subgasto">×</button>
+                  </div>
+                {% else %}
+                  <div class="cash-breakdown-row">
+                    <input type="date" name="sub_fecha" value="{{ movimiento.fecha if movimiento else '' }}" aria-label="Fecha del subgasto">
+                    <input type="text" name="sub_categoria" list="categorias-gasto" placeholder="Categoría">
+                    <input type="text" name="sub_descripcion" placeholder="Descripción opcional">
+                    <input type="number" name="sub_monto" min="0" step="0.01" placeholder="Monto">
+                    <button type="button" class="cash-remove-button" data-remove-cash aria-label="Eliminar subgasto">×</button>
                   </div>
                 {% endfor %}
               </div>
+              <button type="button" class="button button-soft cash-add-button" data-add-cash>Agregar subgasto</button>
+              <template data-cash-breakdown-template>
+                <div class="cash-breakdown-row">
+                  <input type="date" name="sub_fecha" aria-label="Fecha del subgasto">
+                  <input type="text" name="sub_categoria" list="categorias-gasto" placeholder="Categoría">
+                  <input type="text" name="sub_descripcion" placeholder="Descripción opcional">
+                  <input type="number" name="sub_monto" min="0" step="0.01" placeholder="Monto">
+                  <button type="button" class="cash-remove-button" data-remove-cash aria-label="Eliminar subgasto">×</button>
+                </div>
+              </template>
             </details>
           {% endif %}
 
@@ -131,6 +150,6 @@
       {% endif %}
     </main>
 
-    <script src="{{ url_for('static', filename='app.js') }}"></script>
+    <script src="{{ url_for('static', filename='app.js', v='20260829-3') }}"></script>
   </body>
 </html>
