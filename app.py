@@ -3105,6 +3105,94 @@ def exportar_movimientos_ciclo():
     for columna, ancho in {"A": 14, "B": 14, "C": 24, "D": 38, "E": 18}.items():
         hoja.column_dimensions[columna].width = ancho
 
+    movimientos_por_ticket = {
+        item.get("ticket_movimiento"): item
+        for item in movimientos
+        if item.get("ticket_movimiento")
+    }
+
+    hoja_efectivo = libro.create_sheet("Efectivo")
+    encabezados_efectivo = [
+        "Fecha", "Gasto original", "Monto original", "Categoría del subgasto",
+        "Descripción del subgasto", "Monto del subgasto",
+    ]
+    hoja_efectivo.append(encabezados_efectivo)
+    for celda in hoja_efectivo[1]:
+        celda.font = Font(bold=True, color="FFFFFF")
+        celda.fill = PatternFill("solid", fgColor="7C3AED")
+    for detalle in leer_subgastos_efectivo():
+        movimiento = movimientos_por_ticket.get(detalle.get("ticket_movimiento"))
+        if not movimiento:
+            continue
+        hoja_efectivo.append(
+            [
+                fecha_movimiento(movimiento.get("fecha", "")),
+                movimiento.get("descripcion", "") or CATEGORIA_EFECTIVO,
+                float(movimiento.get("monto") or 0),
+                detalle.get("categoria", ""),
+                detalle.get("descripcion", ""),
+                float(detalle.get("monto") or 0),
+            ]
+        )
+    for celda in hoja_efectivo["A"][1:]:
+        celda.number_format = "dd-mm-yyyy"
+    for columna in ("C", "F"):
+        for celda in hoja_efectivo[columna][1:]:
+            celda.number_format = '$' + '#,##0.00'
+    hoja_efectivo.freeze_panes = "A2"
+    hoja_efectivo.auto_filter.ref = hoja_efectivo.dimensions
+    for columna, ancho in {"A": 14, "B": 30, "C": 18, "D": 24, "E": 34, "F": 20}.items():
+        hoja_efectivo.column_dimensions[columna].width = ancho
+
+    hoja_compartidas = libro.create_sheet("Compras compartidas")
+    encabezados_compartidas = [
+        "Fecha del gasto", "Gasto asociado", "Categoría", "Monto original",
+        "Persona", "Monto por cobrar", "Estado", "Fecha de pago", "Monto descontado",
+    ]
+    hoja_compartidas.append(encabezados_compartidas)
+    for celda in hoja_compartidas[1]:
+        celda.font = Font(bold=True, color="FFFFFF")
+        celda.fill = PatternFill("solid", fgColor="C2410C")
+    for deuda in leer_deudas():
+        if not es_compra_compartida(deuda):
+            continue
+        movimiento = movimientos_por_ticket.get(deuda.get("ticket_gasto_asociado"))
+        if not movimiento:
+            continue
+        monto_descontado = (
+            float(deuda.get("monto") or 0)
+            if deuda.get("estado") == "Pagada"
+            else monto_cuota(deuda) * int(deuda.get("cuotas_pagadas") or 0)
+            if deuda.get("modalidad") == "Cuotas"
+            else 0
+        )
+        hoja_compartidas.append(
+            [
+                fecha_movimiento(movimiento.get("fecha", "")),
+                movimiento.get("descripcion", "") or "Sin descripción",
+                movimiento.get("categoria", "") or CATEGORIA_SIN_ASIGNAR,
+                float(movimiento.get("monto") or 0),
+                deuda.get("persona", ""),
+                float(deuda.get("monto") or 0),
+                deuda.get("estado", ""),
+                fecha_movimiento(deuda.get("fecha_pago", "")),
+                monto_descontado,
+            ]
+        )
+    for columna in ("A", "H"):
+        for celda in hoja_compartidas[columna][1:]:
+            celda.number_format = "dd-mm-yyyy"
+    for columna in ("D", "F", "I"):
+        for celda in hoja_compartidas[columna][1:]:
+            celda.number_format = '$' + '#,##0.00'
+    hoja_compartidas.freeze_panes = "A2"
+    hoja_compartidas.auto_filter.ref = hoja_compartidas.dimensions
+    for columna, ancho in {
+        "A": 16, "B": 30, "C": 22, "D": 18, "E": 22,
+        "F": 18, "G": 14, "H": 16, "I": 18,
+    }.items():
+        hoja_compartidas.column_dimensions[columna].width = ancho
+
     salida = BytesIO()
     libro.save(salida)
     salida.seek(0)

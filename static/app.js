@@ -133,16 +133,31 @@ document.querySelectorAll("[data-debt-form]").forEach((form) => {
   const mode = form.elements.namedItem("modalidad");
   const modeField = form.querySelector("[data-debt-mode]");
   const installmentsField = form.querySelector("[data-installments]");
+  const category = form.elements.namedItem("categoria");
+  const categoryPicker = form.querySelector(".category-picker");
+  const sharedExpenseField = form.querySelector("[data-shared-expense]");
+  const sharedExpenseSelect = form.elements.namedItem("gasto_asociado_id");
 
   const updateDebtFields = () => {
     const isPayable = type.value === "Debo";
     const hasInstallments = isPayable && mode.value === "Cuotas";
     modeField.hidden = !isPayable;
     installmentsField.hidden = !hasInstallments;
+    const isSharedExpense =
+      type.value === "Me deben" &&
+      category.value.trim().toLocaleLowerCase("es") === "compra compartida";
+    if (sharedExpenseField) {
+      sharedExpenseField.hidden = !isSharedExpense;
+    }
+    if (sharedExpenseSelect) {
+      sharedExpenseSelect.disabled = !isSharedExpense;
+    }
   };
 
   type.addEventListener("change", updateDebtFields);
   mode.addEventListener("change", updateDebtFields);
+  category?.addEventListener("input", updateDebtFields);
+  categoryPicker?.addEventListener("change", updateDebtFields);
   updateDebtFields();
 });
 
