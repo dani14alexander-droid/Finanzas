@@ -1856,12 +1856,15 @@ def construir_periodos(vista, fechas):
 
 
 def resumen_historico(vista):
+    historico_desde = date(2026, 8, 1)
     movimientos_guardados = leer_movimientos()
     movimientos = list(movimientos_guardados)
+    inicios_ciclo = set()
     for ciclo in opciones_ciclos(movimientos_guardados):
         if not ciclo.get("tiene_informacion"):
             continue
         inicio, _ = rango_ciclo(ciclo["valor"], movimientos_guardados)
+        inicios_ciclo.add(inicio)
         saldo_ya_registrado = any(
             item.get("categoria", "").strip().lower() == "saldo anterior"
             and fecha_movimiento(item.get("fecha", "")) == inicio
@@ -1888,8 +1891,19 @@ def resumen_historico(vista):
                 "id": "",
             }
         )
-    deudas_lista = leer_deudas()
-    descuentos_compartidos = descuentos_compras_compartidas(deudas_lista)
+    todos_los_movimientos = movimientos
+    todas_las_deudas = leer_deudas()
+    movimientos = [
+        item
+        for item in todos_los_movimientos
+        if (fecha := fecha_movimiento(item.get("fecha", ""))) and fecha >= historico_desde
+    ]
+    deudas_lista = [
+        item
+        for item in todas_las_deudas
+        if (fecha := fecha_movimiento(item.get("fecha", ""))) and fecha >= historico_desde
+    ]
+    descuentos_compartidos = descuentos_compras_compartidas(todas_las_deudas)
     subgastos_agrupados = subgastos_por_movimiento()
     fechas_movimientos = []
     fechas_deudas = []
@@ -1945,11 +1959,46 @@ def resumen_historico(vista):
 
     filas = [periodos[clave] for clave in sorted(periodos)]
     filas_deudas = [periodos_deudas[clave] for clave in sorted(periodos_deudas)]
-    disponible_acumulado = 0
     for fila in filas:
         fila["balance"] = fila["ingresos"] - fila["gastos"] - fila["ahorros"]
-        disponible_acumulado += fila["balance"]
-        fila["disponible"] = disponible_acumulado
+
+    if filas:
+        inicio_visible, _ = rango_historico(vista, fechas_movimientos)
+        fin_visible = max(fechas_movimientos)
+        inicios_previos = [inicio for inicio in inicios_ciclo if inicio <= inicio_visible]
+        inicio_calculo = max(inicios_previos) if inicios_previos else inicio_visible
+        variacion_por_fecha = {}
+        for item in todos_los_movimientos:
+            fecha = fecha_movimiento(item.get("fecha", ""))
+            if not fecha or fecha < inicio_calculo or fecha > fin_visible:
+                continue
+            if item.get("tipo") == "Ingreso":
+                variacion = float(item.get("monto") or 0)
+            elif item.get("tipo") == "Gasto":
+                variacion = -monto_efectivo_movimiento(
+                    item, descuentos_compartidos, subgastos_agrupados
+                )
+            elif item.get("tipo") == "Ahorro":
+                variacion = -monto_ahorro_neto(item, subgastos_agrupados)
+                if item.get("categoria", "").strip().lower() == CATEGORIA_AHORRO_FLEXIBLE.lower():
+                    variacion -= total_detalles_movimiento(item, subgastos_agrupados)
+            else:
+                continue
+            variacion_por_fecha[fecha] = variacion_por_fecha.get(fecha, 0) + variacion
+
+        disponible_del_ciclo = 0
+        disponible_por_periodo = {}
+        actual = inicio_calculo
+        while actual <= fin_visible:
+            if actual in inicios_ciclo:
+                disponible_del_ciclo = 0
+            disponible_del_ciclo += variacion_por_fecha.get(actual, 0)
+            clave = clave_periodo(actual, vista)
+            if clave in periodos:
+                disponible_por_periodo[clave] = disponible_del_ciclo
+            actual += timedelta(days=1)
+        for fila in filas:
+            fila["disponible"] = disponible_por_periodo.get(fila["periodo"], 0)
     for fila in filas_deudas:
         fila["balance"] = fila["me_deben"] - fila["debo"]
 
