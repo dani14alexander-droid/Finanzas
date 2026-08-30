@@ -1772,7 +1772,7 @@ def etiqueta_periodo(fecha, vista):
 def rango_historico(vista, fechas):
     if vista == "diaria":
         fin = max(fechas)
-        ventana_inicio = fin - timedelta(days=30)
+        ventana_inicio = fin - timedelta(days=31)
         fechas_relevantes = [fecha for fecha in fechas if ventana_inicio <= fecha <= fin]
         inicio = min(fechas_relevantes) if fechas_relevantes else ventana_inicio
         return inicio, fin
@@ -1856,7 +1856,9 @@ def construir_periodos(vista, fechas):
 
 
 def resumen_historico(vista):
-    historico_desde = date(2026, 8, 1)
+    # Los datos completos comienzan en el Ciclo Agosto 2026, iniciado el
+    # penultimo dia habil de julio. Los ciclos Mayo, Junio y Julio se omiten.
+    historico_desde = fecha_movimiento(penultimo_dia_habil_mes(date(2026, 7, 1)))
     movimientos_guardados = leer_movimientos()
     movimientos = list(movimientos_guardados)
     inicios_ciclo = set()
