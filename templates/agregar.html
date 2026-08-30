@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>{{ titulo or "Agregar movimiento" }}</title>
     <link rel="manifest" href="{{ url_for('static', filename='manifest.json') }}">
-    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css', v='20260829-4') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css', v='20260830-2') }}">
   </head>
   <body>
     <header class="topbar">
@@ -75,6 +75,29 @@
             Monto
             <input type="number" name="monto" min="0" step="0.01" value="{{ movimiento.monto if movimiento else '' }}" required>
           </label>
+
+          {% if deudas_compartidas|default([]) %}
+            <section class="shared-purchase-detail" aria-label="Detalle de compra compartida">
+              <div class="shared-purchase-detail-head">
+                <strong>Detalle de compra compartida</strong>
+                <span>{{ deudas_compartidas|length }} {{ 'deuda asociada' if deudas_compartidas|length == 1 else 'deudas asociadas' }}</span>
+              </div>
+              <ul>
+                {% for deuda in deudas_compartidas %}
+                  <li>
+                    <div>
+                      <strong>{{ deuda.persona or "Sin nombre" }}</strong>
+                      {% if deuda.descripcion %}<small>{{ deuda.descripcion }}</small>{% endif %}
+                    </div>
+                    <span class="{{ 'paid-status' if deuda.estado == 'Pagada' else 'pending-status' }}">
+                      {{ deuda.monto|moneda }} · {{ deuda.estado or "Pendiente" }}
+                    </span>
+                  </li>
+                {% endfor %}
+              </ul>
+              <p>Este detalle se administra desde el apartado Deudas.</p>
+            </section>
+          {% endif %}
 
           {% set detalles = subgastos|default([]) %}
             <details class="cash-breakdown" data-cash-breakdown hidden {{ 'open' if detalles else '' }}>

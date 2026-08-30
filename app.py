@@ -1207,6 +1207,16 @@ def descuentos_compras_compartidas(deudas):
     return descuentos
 
 
+def deudas_compartidas_por_gasto(deudas):
+    asociadas = {}
+    for deuda in deudas:
+        if deuda.get("tipo") != "Me deben" or not deuda.get("ticket_gasto_asociado"):
+            continue
+        ticket = deuda.get("ticket_gasto_asociado", "")
+        asociadas.setdefault(ticket, []).append(deuda)
+    return asociadas
+
+
 def monto_efectivo_movimiento(movimiento, descuentos, subgastos_agrupados=None):
     monto = float(movimiento.get("monto") or 0)
     if movimiento.get("tipo") != "Gasto":
@@ -1846,8 +1856,41 @@ def construir_periodos(vista, fechas):
 
 
 def resumen_historico(vista):
-    movimientos = leer_movimientos()
+    movimientos_guardados = leer_movimientos()
+    movimientos = list(movimientos_guardados)
+    for ciclo in opciones_ciclos(movimientos_guardados):
+        if not ciclo.get("tiene_informacion"):
+            continue
+        inicio, _ = rango_ciclo(ciclo["valor"], movimientos_guardados)
+        saldo_ya_registrado = any(
+            item.get("categoria", "").strip().lower() == "saldo anterior"
+            and fecha_movimiento(item.get("fecha", "")) == inicio
+            for item in movimientos_guardados
+        )
+        if saldo_ya_registrado or not ciclo_anterior_tiene_informacion(
+            movimientos_guardados, inicio
+        ):
+            continue
+        saldo_anterior = saldo_ciclo_anterior(movimientos_guardados, inicio)
+        if abs(saldo_anterior) < 0.01:
+            continue
+        movimientos.append(
+            {
+                "fecha": inicio.isoformat(),
+                "tipo": "Ingreso" if saldo_anterior > 0 else "Gasto",
+                "categoria": "Saldo anterior",
+                "descripcion": "Arrastre del ciclo anterior",
+                "monto": abs(saldo_anterior),
+                "ticket_deuda": "",
+                "origen_deuda": "",
+                "periodo_forzado": "",
+                "ticket_movimiento": "",
+                "id": "",
+            }
+        )
     deudas_lista = leer_deudas()
+    descuentos_compartidos = descuentos_compras_compartidas(deudas_lista)
+    subgastos_agrupados = subgastos_por_movimiento()
     fechas_movimientos = []
     fechas_deudas = []
 
@@ -1875,10 +1918,14 @@ def resumen_historico(vista):
             periodo["ingresos"] += item["monto"]
             periodo["detalle_ingresos"].append(item)
         elif item["tipo"] == "Gasto":
-            periodo["gastos"] += item["monto"]
+            periodo["gastos"] += monto_efectivo_movimiento(
+                item, descuentos_compartidos, subgastos_agrupados
+            )
             periodo["detalle_gastos"].append(item)
         elif item["tipo"] == "Ahorro":
-            periodo["ahorros"] += item["monto"]
+            periodo["ahorros"] += monto_ahorro_neto(item, subgastos_agrupados)
+            if item.get("categoria", "").strip().lower() == CATEGORIA_AHORRO_FLEXIBLE.lower():
+                periodo["gastos"] += total_detalles_movimiento(item, subgastos_agrupados)
             periodo["detalle_ahorros"].append(item)
 
     for item in deudas_lista:
@@ -1898,8 +1945,11 @@ def resumen_historico(vista):
 
     filas = [periodos[clave] for clave in sorted(periodos)]
     filas_deudas = [periodos_deudas[clave] for clave in sorted(periodos_deudas)]
+    disponible_acumulado = 0
     for fila in filas:
         fila["balance"] = fila["ingresos"] - fila["gastos"] - fila["ahorros"]
+        disponible_acumulado += fila["balance"]
+        fila["disponible"] = disponible_acumulado
     for fila in filas_deudas:
         fila["balance"] = fila["me_deben"] - fila["debo"]
 
@@ -2419,6 +2469,9 @@ def editar(movimiento_id):
         return redirect(volver_a)
 
     movimiento = movimientos[movimiento_id]
+    deudas_compartidas = deudas_compartidas_por_gasto(leer_deudas()).get(
+        movimiento.get("ticket_movimiento", ""), []
+    )
     if not volver_ciclo:
         volver_ciclo = periodo_item_ciclo(movimiento, movimientos)
         if volver_ciclo:
@@ -2466,6 +2519,7 @@ def editar(movimiento_id):
             and es_movimiento_detallable(movimiento)
             else []
         ),
+        deudas_compartidas=deudas_compartidas,
     )
 
 
@@ -3146,6 +3200,7 @@ def resumen():
         distribucion_ingresos
     )
 
+    deudas_compartidas = deudas_compartidas_por_gasto(leer_deudas())
     movimientos_filtrados = movimientos
     if filtro_tipo in TIPOS_VALIDOS:
         movimientos_filtrados = [
@@ -3167,6 +3222,16 @@ def resumen():
                 ]
             ).lower()
         ]
+
+    movimientos_filtrados = [
+        {
+            **item,
+            "es_compra_compartida": bool(
+                deudas_compartidas.get(item.get("ticket_movimiento", ""))
+            ),
+        }
+        for item in movimientos_filtrados
+    ]
 
     return render_template(
         "resumen.html",

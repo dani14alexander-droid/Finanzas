@@ -90,6 +90,21 @@
 
       <section class="panel section-gap">
         <div class="panel-header">
+          <h1>Evolución del dinero disponible</h1>
+          <span class="hint-inline">Saldo acumulado · Vista {{ vista }}</span>
+        </div>
+
+        {% if filas %}
+          <div class="chart-canvas-wrap">
+            <canvas id="disponibleHistoricoChart"></canvas>
+          </div>
+        {% else %}
+          <p class="empty">No hay datos para graficar todavía.</p>
+        {% endif %}
+      </section>
+
+      <section class="panel section-gap">
+        <div class="panel-header">
           <h1>Deudas por periodo</h1>
           <span class="hint-inline">Me deben vs debo</span>
         </div>
@@ -125,6 +140,7 @@
                     <th>Me deben</th>
                     <th>Debo</th>
                     <th>Balance</th>
+                    <th>Disponible acumulado</th>
                   {% endif %}
                 </tr>
               </thead>
@@ -145,6 +161,7 @@
                       <td class="positive">{{ fila.me_deben|moneda }}</td>
                       <td class="negative">{{ fila.debo|moneda }}</td>
                       <td class="{{ 'positive' if fila.balance >= 0 else 'negative' }}">{{ fila.balance|moneda }}</td>
+                      <td class="{{ 'positive' if fila.disponible >= 0 else 'negative' }}">{{ fila.disponible|moneda }}</td>
                     {% endif %}
                   </tr>
                 {% endfor %}
@@ -161,6 +178,12 @@
       {{ {
         "labels": filas|map(attribute="etiqueta")|list,
         "datasets": datasets_movimientos
+      }|tojson }}
+    </script>
+    <script id="disponible-history-data" type="application/json">
+      {{ {
+        "labels": filas|map(attribute="etiqueta")|list,
+        "values": filas|map(attribute="disponible")|list
       }|tojson }}
     </script>
     <script id="deudas-history-data" type="application/json">
@@ -184,6 +207,6 @@
     </script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.2.0"></script>
-    <script src="{{ url_for('static', filename='app.js') }}"></script>
+    <script src="{{ url_for('static', filename='app.js') }}?v=20260830-1"></script>
   </body>
 </html>

@@ -474,3 +474,55 @@ const buildHistoryBar = (canvasId, dataId) => {
 
 buildHistoryBar("movimientosHistoricoChart", "movimientos-history-data");
 buildHistoryBar("deudasHistoricoChart", "deudas-history-data");
+
+const buildAvailableHistory = () => {
+  const canvas = document.getElementById("disponibleHistoricoChart");
+  const data = readChartData("disponible-history-data");
+  if (!canvas || !data || !window.Chart) {
+    return;
+  }
+
+  new Chart(canvas, {
+    type: "line",
+    data: {
+      labels: data.labels,
+      datasets: [{
+        label: "Dinero disponible",
+        data: data.values,
+        borderColor: "#1f6feb",
+        backgroundColor: "rgba(31, 111, 235, 0.12)",
+        fill: true,
+        pointBackgroundColor: "#1f6feb",
+        pointRadius: 3,
+        tension: 0.25,
+      }],
+    },
+    options: {
+      maintainAspectRatio: false,
+      responsive: true,
+      plugins: {
+        datalabels: { display: false },
+        legend: { position: "bottom" },
+        tooltip: {
+          callbacks: {
+            label: (context) => `Disponible: ${moneyFormatter.format(Number(context.raw || 0))}`,
+          },
+        },
+      },
+      scales: {
+        x: { grid: { display: false }, ticks: { color: "#667085", maxRotation: 0 } },
+        y: {
+          grid: { color: "#d9e0ea" },
+          ticks: {
+            callback: (value) => moneyFormatter.format(value),
+            color: "#667085",
+            maxTicksLimit: 5,
+          },
+        },
+      },
+    },
+    plugins: window.ChartDataLabels ? [ChartDataLabels] : [],
+  });
+};
+
+buildAvailableHistory();

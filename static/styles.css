@@ -1207,6 +1207,67 @@ select:focus {
   padding: 14px;
 }
 
+.shared-purchase-mark {
+  margin-left: 2px;
+  font-weight: 800;
+}
+
+.shared-purchase-detail {
+  padding: 16px;
+  border: 1px solid #bfdbfe;
+  border-radius: 10px;
+  background: #eff6ff;
+}
+
+.shared-purchase-detail-head,
+.shared-purchase-detail li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.shared-purchase-detail-head span,
+.shared-purchase-detail small,
+.shared-purchase-detail > p {
+  color: #667085;
+}
+
+.shared-purchase-detail ul {
+  display: grid;
+  gap: 8px;
+  margin: 12px 0;
+  padding: 0;
+  list-style: none;
+}
+
+.shared-purchase-detail li {
+  padding: 10px 12px;
+  border: 1px solid #dbeafe;
+  border-radius: 8px;
+  background: #fff;
+}
+
+.shared-purchase-detail li > div {
+  display: grid;
+  gap: 2px;
+}
+
+.shared-purchase-detail .paid-status {
+  color: #15803d;
+  font-weight: 800;
+}
+
+.shared-purchase-detail .pending-status {
+  color: #c2410c;
+  font-weight: 800;
+}
+
+.shared-purchase-detail > p {
+  margin: 0;
+  font-size: 0.88rem;
+}
+
 .cash-breakdown summary {
   color: var(--primary);
   cursor: pointer;

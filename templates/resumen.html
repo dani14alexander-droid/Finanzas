@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Resumen</title>
     <link rel="manifest" href="{{ url_for('static', filename='manifest.json') }}">
-    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css', v='20260829-7') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css', v='20260830-2') }}">
   </head>
   <body>
     <header class="topbar">
@@ -137,7 +137,7 @@
                     <td>{{ item.tipo }}</td>
                     <td>{{ item.categoria or "Sin categoria" }}</td>
                     <td class="{{ 'positive' if item.tipo == 'Ingreso' else 'saving' if item.tipo == 'Ahorro' else 'negative' }}">
-                      {{ item.monto|moneda }}
+                      {{ item.monto|moneda }}{% if item.es_compra_compartida %}<span class="shared-purchase-mark" title="Compra compartida">**</span>{% endif %}
                     </td>
                   </tr>
                 {% endfor %}
