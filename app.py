@@ -1326,6 +1326,8 @@ def saldo_ciclo_anterior(movimientos, fecha_inicio):
     mes_anterior = sumar_meses(date(fecha_inicio.year, fecha_inicio.month, 1), -1)
     inicio_anterior = fecha_movimiento(penultimo_dia_habil_mes(mes_anterior))
     fin_anterior = fecha_inicio - timedelta(days=1)
+    descuentos_compartidos = descuentos_compras_compartidas(leer_deudas())
+    subgastos_agrupados = subgastos_por_movimiento()
     saldo = 0
     for item in movimientos:
         fecha = fecha_movimiento(item.get("fecha", ""))
@@ -1335,11 +1337,16 @@ def saldo_ciclo_anterior(movimientos, fecha_inicio):
                 continue
         elif not fecha or not (inicio_anterior <= fecha <= fin_anterior):
             continue
-        monto = float(item.get("monto") or 0)
         if item.get("tipo") == "Ingreso":
-            saldo += monto
-        elif item.get("tipo") in {"Gasto", "Ahorro"}:
-            saldo -= monto
+            saldo += float(item.get("monto") or 0)
+        elif item.get("tipo") == "Gasto":
+            saldo -= monto_efectivo_movimiento(
+                item, descuentos_compartidos, subgastos_agrupados
+            )
+        elif item.get("tipo") == "Ahorro":
+            saldo -= monto_ahorro_neto(item, subgastos_agrupados)
+            if item.get("categoria", "").strip().lower() == CATEGORIA_AHORRO_FLEXIBLE.lower():
+                saldo -= total_detalles_movimiento(item, subgastos_agrupados)
     return saldo
 
 
