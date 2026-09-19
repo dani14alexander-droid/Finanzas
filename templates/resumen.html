@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Resumen</title>
     <link rel="manifest" href="{{ url_for('static', filename='manifest.json') }}">
-    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css', v='20260830-2') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css', v='20260919-3') }}">
   </head>
   <body>
     <header class="topbar">
@@ -30,6 +30,7 @@
           {% endif %}
         </div>
         <form class="date-card auto-filter" method="get" action="{{ url_for('resumen') }}">
+          <input type="hidden" name="gastos_vista" value="{{ gastos_variables.vista }}">
           <label>
             Ciclo
             <select name="ciclo">
@@ -66,10 +67,45 @@
         </article>
       </section>
 
+      <section class="panel variable-expenses-panel">
+        <div class="panel-header variable-expenses-head">
+          <div>
+            <h2>Gastos variables del ciclo</h2>
+            <p class="hint-inline">
+              Meta {{ 'diaria' if gastos_variables.vista == 'diaria' else 'semanal' }}:
+              {{ gastos_variables.meta|moneda }} · No incluye gastos fijos ni ahorros.
+            </p>
+          </div>
+          <form class="view-switch" method="get">
+            <input type="hidden" name="ciclo" value="{{ ciclo_seleccionado }}">
+            <input type="hidden" name="q" value="{{ busqueda }}">
+            <input type="hidden" name="tipo" value="{{ filtro_tipo }}">
+            <button name="gastos_vista" value="diaria" class="{{ 'active' if gastos_variables.vista == 'diaria' else '' }}">Diaria</button>
+            <button name="gastos_vista" value="semanal" class="{{ 'active' if gastos_variables.vista == 'semanal' else '' }}">Semanal</button>
+          </form>
+        </div>
+        {% if gastos_variables.filas %}
+          <div class="chart-canvas-wrap variable-expenses-chart-wrap">
+            <canvas id="gastosVariablesChart"></canvas>
+          </div>
+          <div class="variable-expenses-legend" aria-label="Leyenda">
+            <span><i class="legend-dot over"></i>Sobre la meta</span>
+            <span><i class="legend-dot under"></i>Dentro de la meta</span>
+            <span><i class="legend-line"></i>Meta</span>
+          </div>
+          <div id="variable-expenses-detail" class="variable-expenses-detail" hidden></div>
+        {% else %}
+          <p class="empty">Este ciclo no tiene periodos para mostrar.</p>
+        {% endif %}
+      </section>
+
       <section class="panel">
-        <div class="panel-header">
+          <div class="panel-header">
           <h1>Resumen por categoria</h1>
-          <span class="kpi-pill">Cuota semanal: {{ cuota_semanal|moneda }}</span>
+          <div>
+            <span class="hint-inline">Comparado con {{ ciclo_anterior_etiqueta }}</span>
+            <span class="kpi-pill">Cuota semanal: {{ cuota_semanal|moneda }}</span>
+          </div>
         </div>
         <div class="charts-grid">
           <article class="chart-section">
@@ -129,6 +165,7 @@
                   <th>Tipo</th>
                   <th>Categoria</th>
                   <th>Monto</th>
+                  <th>Variación ciclo anterior</th>
                 </tr>
               </thead>
               <tbody>
@@ -138,6 +175,18 @@
                     <td>{{ item.categoria or "Sin categoria" }}</td>
                     <td class="{{ 'positive' if item.tipo == 'Ingreso' else 'saving' if item.tipo == 'Ahorro' else 'negative' }}">
                       {{ item.monto|moneda }}
+                    </td>
+                    {% set variacion_clase = 'neutral' if item.variacion is none or item.variacion == 0 else ('positive' if (item.tipo == 'Gasto' and item.variacion < 0) or (item.tipo != 'Gasto' and item.variacion > 0) else 'negative') %}
+                    <td class="category-variation {{ variacion_clase }}">
+                      {% if item.variacion is none %}
+                        —
+                      {% elif item.variacion > 0 %}
+                        ↑ +{{ item.variacion|moneda }}
+                      {% elif item.variacion < 0 %}
+                        ↓ -{{ (item.variacion|abs)|moneda }}
+                      {% else %}
+                        {{ 0|moneda }}
+                      {% endif %}
                     </td>
                   </tr>
                 {% endfor %}
@@ -252,6 +301,16 @@
       </section>
     </main>
 
+    <script id="variable-expenses-data" type="application/json">
+      {{ {
+        "labels": gastos_variables.filas|map(attribute="etiqueta")|list,
+        "values": gastos_variables.filas|map(attribute="monto")|list,
+        "details": gastos_variables.filas,
+        "goal": gastos_variables.meta,
+        "view": gastos_variables.vista
+      }|tojson }}
+    </script>
+
     <script id="gastos-chart-data" type="application/json">
       {{ {
         "labels": gastos_por_categoria|map(attribute="categoria")|list,
@@ -269,6 +328,6 @@
     {% include "_categorias_datalist.html" %}
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.2.0"></script>
-    <script src="{{ url_for('static', filename='app.js', v='20260919-2') }}"></script>
+    <script src="{{ url_for('static', filename='app.js', v='20260919-3') }}"></script>
   </body>
 </html>

@@ -653,6 +653,7 @@ const buildVariableExpensesChart = () => {
         }
       },
       plugins: {
+        datalabels: { display: false },
         legend: { display: false },
         tooltip: {
           callbacks: {

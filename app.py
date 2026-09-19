@@ -1306,6 +1306,36 @@ def categorias_efectivas_movimiento(movimiento, monto_efectivo, subgastos_agrupa
     return resultado
 
 
+def totales_efectivos_por_categoria(movimientos, descuentos, subgastos_agrupados):
+    totales = {}
+    for item in movimientos:
+        monto = monto_efectivo_movimiento(item, descuentos, subgastos_agrupados)
+        if item["tipo"] == "Gasto":
+            for categoria, monto_categoria in categorias_efectivas_movimiento(
+                item, monto, subgastos_agrupados
+            ):
+                clave = (item["tipo"], categoria)
+                totales[clave] = totales.get(clave, 0) + monto_categoria
+        elif (
+            item["tipo"] == "Ahorro"
+            and item.get("categoria", "").strip().lower()
+            == CATEGORIA_AHORRO_FLEXIBLE.lower()
+        ):
+            clave = ("Ahorro", item["categoria"])
+            totales[clave] = totales.get(clave, 0) + monto_ahorro_neto(
+                item, subgastos_agrupados
+            )
+            for detalle in subgastos_agrupados.get(item.get("ticket_movimiento", ""), []):
+                clave_gasto = ("Gasto", detalle.get("categoria") or CATEGORIA_SIN_ASIGNAR)
+                totales[clave_gasto] = totales.get(clave_gasto, 0) + float(
+                    detalle.get("monto") or 0
+                )
+        else:
+            clave = (item["tipo"], item["categoria"])
+            totales[clave] = totales.get(clave, 0) + monto
+    return totales
+
+
 def eliminar_movimientos_deuda(ticket, origen=None):
     if not ticket:
         return
@@ -3336,31 +3366,36 @@ def resumen():
     )
     disponible = ingresos - gastos - ahorros
     cuota_semanal = disponible / semanas if semanas > 0 else 0
-    totales = {}
-    for item in movimientos:
-        monto = monto_efectivo_movimiento(item, descuentos_compartidos, subgastos_agrupados)
-        if item["tipo"] == "Gasto":
-            for categoria, monto_categoria in categorias_efectivas_movimiento(
-                item, monto, subgastos_agrupados
-            ):
-                clave = (item["tipo"], categoria)
-                totales[clave] = totales.get(clave, 0) + monto_categoria
-        elif item["tipo"] == "Ahorro" and item.get("categoria", "").strip().lower() == CATEGORIA_AHORRO_FLEXIBLE.lower():
-            clave = ("Ahorro", item["categoria"])
-            totales[clave] = totales.get(clave, 0) + monto_ahorro_neto(
-                item, subgastos_agrupados
-            )
-            for detalle in subgastos_agrupados.get(item.get("ticket_movimiento", ""), []):
-                clave_gasto = ("Gasto", detalle.get("categoria") or CATEGORIA_SIN_ASIGNAR)
-                totales[clave_gasto] = totales.get(clave_gasto, 0) + float(
-                    detalle.get("monto") or 0
-                )
-        else:
-            clave = (item["tipo"], item["categoria"])
-            totales[clave] = totales.get(clave, 0) + monto
+    totales = totales_efectivos_por_categoria(
+        movimientos, descuentos_compartidos, subgastos_agrupados
+    )
+    indice_ciclo = next(
+        (indice for indice, ciclo in enumerate(ciclos) if ciclo["valor"] == ciclo_seleccionado),
+        -1,
+    )
+    ciclo_anterior = ciclos[indice_ciclo + 1] if 0 <= indice_ciclo < len(ciclos) - 1 else None
+    movimientos_anteriores = (
+        movimientos_de_ciclo(todos_movimientos, ciclo_anterior["valor"])[0]
+        if ciclo_anterior
+        else []
+    )
+    totales_anteriores = totales_efectivos_por_categoria(
+        movimientos_anteriores, descuentos_compartidos, subgastos_agrupados
+    )
+    claves_categorias = set(totales) | set(totales_anteriores)
     por_categoria = [
-        {"tipo": tipo, "categoria": categoria, "monto": monto}
-        for (tipo, categoria), monto in totales.items()
+        {
+            "tipo": tipo,
+            "categoria": categoria,
+            "monto": totales.get((tipo, categoria), 0),
+            "variacion": (
+                totales.get((tipo, categoria), 0)
+                - totales_anteriores.get((tipo, categoria), 0)
+                if ciclo_anterior
+                else None
+            ),
+        }
+        for tipo, categoria in claves_categorias
     ]
     por_categoria.sort(key=lambda item: (item["tipo"], -item["monto"]))
 
@@ -3400,6 +3435,15 @@ def resumen():
     )
 
     deudas_compartidas = deudas_compartidas_por_gasto(leer_deudas())
+    gastos_variables = datos_gastos_variables(
+        {
+            "periodo_inicio": periodo_inicio,
+            "periodo_fin": periodo_fin,
+            "fecha_calculo": min(fecha_hoy_chile(), periodo_fin),
+            "movimientos": movimientos,
+        },
+        request.args.get("gastos_vista", "diaria"),
+    )
     movimientos_filtrados = movimientos
     if filtro_tipo in TIPOS_VALIDOS:
         movimientos_filtrados = [
@@ -3458,6 +3502,8 @@ def resumen():
         busqueda=busqueda,
         filtro_tipo=filtro_tipo,
         agregar_rapido=agregar_rapido,
+        gastos_variables=gastos_variables,
+        ciclo_anterior_etiqueta=(ciclo_anterior["etiqueta"] if ciclo_anterior else "Sin ciclo anterior"),
         fecha_hoy_chile=fecha_hoy_chile().isoformat(),
         ahorros_acumulados_categoria=ahorros_acumulados_por_categoria(
             todos_movimientos, subgastos_agrupados

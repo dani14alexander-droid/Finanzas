@@ -295,6 +295,15 @@ th {
   color: var(--negative);
 }
 
+.neutral {
+  color: var(--muted);
+}
+
+.category-variation {
+  font-weight: 800;
+  white-space: nowrap;
+}
+
 .saving {
   color: var(--saving);
 }
