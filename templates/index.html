@@ -6,7 +6,7 @@
     <meta name="theme-color" content="#1f6feb">
     <title>Dashboard financiero</title>
     <link rel="manifest" href="{{ url_for('static', filename='manifest.json') }}">
-    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css', v='20260919-1') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css', v='20260919-2') }}">
   </head>
   <body>
     <header class="topbar">
@@ -105,6 +105,7 @@
             <span><i class="legend-dot under"></i>Dentro de la meta</span>
             <span><i class="legend-line"></i>Meta</span>
           </div>
+          <div id="variable-expenses-detail" class="variable-expenses-detail" hidden></div>
         {% else %}
           <p class="empty">Todavía no hay días del periodo para mostrar.</p>
         {% endif %}
@@ -147,11 +148,12 @@
       {{ {
         "labels": gastos_variables.filas|map(attribute="etiqueta")|list,
         "values": gastos_variables.filas|map(attribute="monto")|list,
+        "details": gastos_variables.filas,
         "goal": gastos_variables.meta,
         "view": gastos_variables.vista
       }|tojson }}
     </script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
-    <script src="{{ url_for('static', filename='app.js', v='20260919-1') }}"></script>
+    <script src="{{ url_for('static', filename='app.js', v='20260919-2') }}"></script>
   </body>
 </html>

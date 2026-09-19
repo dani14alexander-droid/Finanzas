@@ -2169,6 +2169,31 @@ def datos_gastos_variables(datos_dashboard, vista="diaria"):
     descuentos = descuentos_compras_compartidas(leer_deudas())
     subgastos = subgastos_por_movimiento()
     gastos_por_fecha = {}
+    detalles_por_fecha = {}
+
+    def registrar_gasto(fecha, categoria, descripcion, monto):
+        if not fecha or not (inicio <= fecha <= fin_visible) or monto <= 0:
+            return
+        gastos_por_fecha[fecha] = gastos_por_fecha.get(fecha, 0) + monto
+        detalles_por_fecha.setdefault(fecha, []).append(
+            {
+                "fecha": fecha.isoformat(),
+                "categoria": categoria or CATEGORIA_SIN_ASIGNAR,
+                "descripcion": descripcion or categoria or "Sin descripción",
+                "monto": monto,
+            }
+        )
+
+    def resumen_categorias(detalles):
+        categorias = {}
+        for detalle in detalles:
+            categoria = detalle["categoria"]
+            categorias[categoria] = categorias.get(categoria, 0) + detalle["monto"]
+        return [
+            {"categoria": categoria, "monto": monto}
+            for categoria, monto in sorted(categorias.items(), key=lambda item: (-item[1], item[0].lower()))
+        ]
+
     for movimiento in datos_dashboard["movimientos"]:
         if movimiento.get("tipo") != "Gasto":
             continue
@@ -2180,16 +2205,41 @@ def datos_gastos_variables(datos_dashboard, vista="diaria"):
         ):
             continue
         fecha = fecha_movimiento(movimiento.get("fecha", ""))
-        if not fecha or not (inicio <= fecha <= fin_visible):
+        if movimiento.get("categoria", "").strip().lower() == CATEGORIA_EFECTIVO.lower():
+            restante = float(movimiento.get("monto") or 0)
+            for detalle in subgastos.get(movimiento.get("ticket_movimiento", ""), []):
+                monto = min(float(detalle.get("monto") or 0), restante)
+                fecha_detalle = fecha_movimiento(detalle.get("fecha", "")) or fecha
+                registrar_gasto(
+                    fecha_detalle,
+                    detalle.get("categoria"),
+                    detalle.get("descripcion"),
+                    monto,
+                )
+                restante -= monto
+                if restante <= 0:
+                    break
             continue
-        monto = monto_efectivo_movimiento(movimiento, descuentos, subgastos)
-        gastos_por_fecha[fecha] = gastos_por_fecha.get(fecha, 0) + monto
+        registrar_gasto(
+            fecha,
+            movimiento.get("categoria"),
+            movimiento.get("descripcion"),
+            monto_efectivo_movimiento(movimiento, descuentos, subgastos),
+        )
 
     filas = []
     if vista == "diaria":
         actual = inicio
         while actual <= fin_visible:
-            filas.append({"etiqueta": actual.strftime("%d-%m"), "monto": gastos_por_fecha.get(actual, 0)})
+            detalles = detalles_por_fecha.get(actual, [])
+            filas.append(
+                {
+                    "etiqueta": actual.strftime("%d-%m"),
+                    "monto": gastos_por_fecha.get(actual, 0),
+                    "detalles": detalles,
+                    "categorias": resumen_categorias(detalles),
+                }
+            )
             actual += timedelta(days=1)
     else:
         cantidad_visible = max(((fin_visible - inicio).days // 7) + 1, 0)
@@ -2201,10 +2251,18 @@ def datos_gastos_variables(datos_dashboard, vista="diaria"):
                 for fecha, valor in gastos_por_fecha.items()
                 if semana_inicio <= fecha <= semana_fin
             )
+            detalles = [
+                detalle
+                for fecha, items in detalles_por_fecha.items()
+                if semana_inicio <= fecha <= semana_fin
+                for detalle in items
+            ]
             filas.append(
                 {
                     "etiqueta": f"{semana_inicio.strftime('%d-%m')} al {semana_fin.strftime('%d-%m')}",
                     "monto": monto,
+                    "detalles": detalles,
+                    "categorias": resumen_categorias(detalles),
                 }
             )
     return {

@@ -940,6 +940,63 @@ th {
   width: 22px;
 }
 
+.variable-expenses-detail {
+  margin-top: 22px;
+  padding-top: 20px;
+  border-top: 1px solid var(--line);
+}
+
+.variable-detail-header {
+  align-items: center;
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.variable-detail-header span,
+.variable-category-summary h4 {
+  color: var(--muted);
+  font-size: 0.82rem;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.variable-detail-header h3 {
+  margin: 3px 0 0;
+}
+
+.variable-detail-header > strong {
+  color: var(--negative);
+  font-size: 1.5rem;
+}
+
+.variable-category-summary {
+  margin: 18px 0;
+}
+
+.variable-category-summary ul {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0;
+}
+
+.variable-category-summary li {
+  background: #eff6ff;
+  border: 1px solid #bfdbfe;
+  border-radius: 999px;
+  display: inline-flex;
+  gap: 8px;
+  padding: 7px 11px;
+}
+
+.variable-expenses-detail td:last-child,
+.variable-expenses-detail th:last-child {
+  text-align: right;
+}
+
 .y-axis {
   color: var(--muted);
   display: flex;

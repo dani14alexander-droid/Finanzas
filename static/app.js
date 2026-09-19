@@ -53,6 +53,15 @@ document.querySelectorAll("[data-category-list]").forEach((categoryInput) => {
       categoryPicker.append(option);
     });
 
+    const exactCategory = categories.find(
+      (category) => category.toLocaleLowerCase("es") === normalizedFilter
+    );
+    if (exactCategory) {
+      categoryPicker.value = exactCategory;
+    } else if (normalizedFilter && categories.length) {
+      categoryPicker.value = categories[0];
+    }
+
     categoryInput.setAttribute("list", listId);
   };
 
@@ -71,11 +80,13 @@ document.querySelectorAll("[data-category-list]").forEach((categoryInput) => {
   });
   categoryInput.addEventListener("input", () => {
     refreshCategoryPicker(categoryInput.value);
-    categoryPicker.value = Array.from(categoryPicker.options).some(
-      (option) => option.value === categoryInput.value
-    )
-      ? categoryInput.value
-      : "";
+  });
+  categoryInput.addEventListener("keydown", (event) => {
+    if (event.key === "Enter" && categoryPicker.value) {
+      event.preventDefault();
+      categoryInput.value = categoryPicker.value;
+      refreshCategoryPicker(categoryInput.value);
+    }
   });
   typeSelect?.addEventListener("change", updateCategoryList);
 });
@@ -551,6 +562,52 @@ const buildVariableExpensesChart = () => {
 
   const goal = Number(data.goal || 0);
   const values = data.values.map((value) => Number(value || 0));
+  const detailPanel = document.getElementById("variable-expenses-detail");
+  const escapeHtml = (value) => String(value ?? "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#039;");
+  const renderVariableDetail = (index) => {
+    if (!detailPanel || !data.details?.[index]) {
+      return;
+    }
+    const detail = data.details[index];
+    const categories = detail.categorias.length
+      ? detail.categorias.map((item) => `
+          <li><span>${escapeHtml(item.categoria)}</span><strong>${moneyFormatter.format(item.monto)}</strong></li>
+        `).join("")
+      : "<li><span>Sin gastos</span><strong>$0</strong></li>";
+    const purchases = detail.detalles.length
+      ? detail.detalles.map((item) => `
+          <tr>
+            <td>${escapeHtml(item.fecha)}</td>
+            <td>${escapeHtml(item.descripcion)}</td>
+            <td>${escapeHtml(item.categoria)}</td>
+            <td>${moneyFormatter.format(item.monto)}</td>
+          </tr>
+        `).join("")
+      : '<tr><td colspan="4">No hubo gastos variables en este periodo.</td></tr>';
+    detailPanel.innerHTML = `
+      <div class="variable-detail-header">
+        <div><span>Desglose</span><h3>${escapeHtml(detail.etiqueta)}</h3></div>
+        <strong>${moneyFormatter.format(detail.monto)}</strong>
+      </div>
+      <div class="variable-category-summary">
+        <h4>Resumen por categoría</h4>
+        <ul>${categories}</ul>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Fecha</th><th>Compra</th><th>Categoría</th><th>Valor</th></tr></thead>
+          <tbody>${purchases}</tbody>
+        </table>
+      </div>
+    `;
+    detailPanel.hidden = false;
+    detailPanel.scrollIntoView({ behavior: "smooth", block: "nearest" });
+  };
   new Chart(canvas, {
     type: "bar",
     data: {
@@ -582,6 +639,19 @@ const buildVariableExpensesChart = () => {
       maintainAspectRatio: false,
       responsive: true,
       interaction: { intersect: false, mode: "index" },
+      onClick: (_event, elements) => {
+        const bar = elements.find((element) => element.datasetIndex === 0);
+        if (bar) {
+          renderVariableDetail(bar.index);
+        }
+      },
+      onHover: (event, elements) => {
+        if (event.native?.target) {
+          event.native.target.style.cursor = elements.some((element) => element.datasetIndex === 0)
+            ? "pointer"
+            : "default";
+        }
+      },
       plugins: {
         legend: { display: false },
         tooltip: {
