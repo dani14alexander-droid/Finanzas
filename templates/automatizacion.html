@@ -41,8 +41,8 @@
           <strong class="negative">{{ total_gastos_fijos|moneda }}</strong>
         </article>
         <article>
-          <span>Gastos fijos sin arriendo</span>
-          <strong class="negative">{{ total_gastos_fijos_sin_arriendo|moneda }}</strong>
+          <span>Gastos fijos sin Aporte</span>
+          <strong class="negative">{{ total_gastos_fijos_sin_aporte|moneda }}</strong>
         </article>
         <article>
           <span>Ahorros planificados</span>
@@ -226,6 +226,6 @@
       </section>
     </main>
 
-    <script src="{{ url_for('static', filename='app.js') }}"></script>
+    <script src="{{ url_for('static', filename='app.js', v='20260919-1') }}"></script>
   </body>
 </html>

@@ -2135,6 +2135,87 @@ def calcular_dashboard(filtrar_periodo=False):
     }
 
 
+def datos_gastos_variables(datos_dashboard, vista="diaria"):
+    if vista not in {"diaria", "semanal"}:
+        vista = "diaria"
+    inicio = datos_dashboard["periodo_inicio"]
+    fin = datos_dashboard["periodo_fin"]
+    hoy = datos_dashboard["fecha_calculo"]
+    fin_visible = min(hoy, fin)
+    periodo = inicio.isoformat()
+    todas_las_automatizaciones = leer_automatizaciones()
+    automatizaciones_gasto = [
+        item
+        for item in todas_las_automatizaciones
+        if item.get("activo")
+        and item.get("tipo") == "Gasto"
+        and not esta_anulada(item, periodo)
+    ]
+    compromiso_mensual = sum(
+        float(item.get("monto") or 0)
+        for item in todas_las_automatizaciones
+        if item.get("activo") and not esta_anulada(item, periodo)
+    )
+    ingresos_periodo = sum(
+        float(item.get("monto") or 0)
+        for item in datos_dashboard["movimientos"]
+        if item.get("tipo") == "Ingreso"
+        and item.get("categoria", "").strip().lower() != "saldo anterior"
+    )
+    dias_periodo = max((fin - inicio).days + 1, 1)
+    cantidad_periodos = dias_periodo if vista == "diaria" else max(ceil(dias_periodo / 7), 1)
+    meta = (ingresos_periodo - compromiso_mensual) / cantidad_periodos
+
+    descuentos = descuentos_compras_compartidas(leer_deudas())
+    subgastos = subgastos_por_movimiento()
+    gastos_por_fecha = {}
+    for movimiento in datos_dashboard["movimientos"]:
+        if movimiento.get("tipo") != "Gasto":
+            continue
+        if movimiento.get("categoria", "").strip().lower() == "saldo anterior":
+            continue
+        if any(
+            movimiento_coincide_automatizacion(movimiento, automatizacion)
+            for automatizacion in automatizaciones_gasto
+        ):
+            continue
+        fecha = fecha_movimiento(movimiento.get("fecha", ""))
+        if not fecha or not (inicio <= fecha <= fin_visible):
+            continue
+        monto = monto_efectivo_movimiento(movimiento, descuentos, subgastos)
+        gastos_por_fecha[fecha] = gastos_por_fecha.get(fecha, 0) + monto
+
+    filas = []
+    if vista == "diaria":
+        actual = inicio
+        while actual <= fin_visible:
+            filas.append({"etiqueta": actual.strftime("%d-%m"), "monto": gastos_por_fecha.get(actual, 0)})
+            actual += timedelta(days=1)
+    else:
+        cantidad_visible = max(((fin_visible - inicio).days // 7) + 1, 0)
+        for indice in range(cantidad_visible):
+            semana_inicio = inicio + timedelta(days=indice * 7)
+            semana_fin = min(semana_inicio + timedelta(days=6), fin)
+            monto = sum(
+                valor
+                for fecha, valor in gastos_por_fecha.items()
+                if semana_inicio <= fecha <= semana_fin
+            )
+            filas.append(
+                {
+                    "etiqueta": f"{semana_inicio.strftime('%d-%m')} al {semana_fin.strftime('%d-%m')}",
+                    "monto": monto,
+                }
+            )
+    return {
+        "vista": vista,
+        "meta": meta,
+        "ingresos": ingresos_periodo,
+        "compromiso": compromiso_mensual,
+        "filas": filas,
+    }
+
+
 def calcular_planificacion():
     datos = calcular_dashboard(filtrar_periodo=True)
     periodo_inicio = datos["periodo_inicio"]
@@ -2247,7 +2328,9 @@ def calcular_planificacion():
 
 @app.route("/")
 def index():
-    return render_template("index.html", **calcular_dashboard(filtrar_periodo=True))
+    datos = calcular_dashboard(filtrar_periodo=True)
+    variables = datos_gastos_variables(datos, request.args.get("gastos_vista", "diaria"))
+    return render_template("index.html", **datos, gastos_variables=variables)
 
 
 @app.route("/planificacion", methods=["GET", "POST"])
@@ -2693,13 +2776,13 @@ def automatizacion():
         for item in automatizaciones
         if item["activo"] and item["tipo"] == "Gasto" and not esta_anulada(item, periodo)
     )
-    total_gastos_fijos_sin_arriendo = sum(
+    total_gastos_fijos_sin_aporte = sum(
         item["monto"]
         for item in automatizaciones
         if item["activo"]
         and item["tipo"] == "Gasto"
         and not esta_anulada(item, periodo)
-        and "arriendo" not in f"{item['categoria']} {item['descripcion']}".lower()
+        and "aporte al hogar" not in f"{item['categoria']} {item['descripcion']}".lower()
     )
     total_ahorros_planificados = sum(
         item["monto"]
@@ -2717,7 +2800,7 @@ def automatizacion():
         anuladas=anuladas,
         periodo=periodo,
         total_gastos_fijos=total_gastos_fijos,
-        total_gastos_fijos_sin_arriendo=total_gastos_fijos_sin_arriendo,
+        total_gastos_fijos_sin_aporte=total_gastos_fijos_sin_aporte,
         total_ahorros_planificados=total_ahorros_planificados,
         compromiso_mensual=compromiso_mensual,
         sueldo_menos_compromisos=sueldo_monto - compromiso_mensual,
@@ -3317,6 +3400,7 @@ def resumen():
         busqueda=busqueda,
         filtro_tipo=filtro_tipo,
         agregar_rapido=agregar_rapido,
+        fecha_hoy_chile=fecha_hoy_chile().isoformat(),
         ahorros_acumulados_categoria=ahorros_acumulados_por_categoria(
             todos_movimientos, subgastos_agrupados
         ),

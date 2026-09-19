@@ -6,7 +6,7 @@
     <meta name="theme-color" content="#1f6feb">
     <title>Dashboard financiero</title>
     <link rel="manifest" href="{{ url_for('static', filename='manifest.json') }}">
-    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css', v='20260919-1') }}">
   </head>
   <body>
     <header class="topbar">
@@ -81,6 +81,35 @@
         </article>
       </section>
 
+      <section class="panel variable-expenses-panel">
+        <div class="panel-header variable-expenses-head">
+          <div>
+            <h2>Gastos variables por periodo</h2>
+            <p class="hint-inline">
+              Meta {{ 'diaria' if gastos_variables.vista == 'diaria' else 'semanal' }}:
+              {{ gastos_variables.meta|moneda }} · Ingresos {{ gastos_variables.ingresos|moneda }}
+              menos compromiso mensual {{ gastos_variables.compromiso|moneda }}
+            </p>
+          </div>
+          <form class="view-switch" method="get">
+            <button name="gastos_vista" value="diaria" class="{{ 'active' if gastos_variables.vista == 'diaria' else '' }}">Diaria</button>
+            <button name="gastos_vista" value="semanal" class="{{ 'active' if gastos_variables.vista == 'semanal' else '' }}">Semanal</button>
+          </form>
+        </div>
+        {% if gastos_variables.filas %}
+          <div class="chart-canvas-wrap variable-expenses-chart-wrap">
+            <canvas id="gastosVariablesChart"></canvas>
+          </div>
+          <div class="variable-expenses-legend" aria-label="Leyenda">
+            <span><i class="legend-dot over"></i>Sobre la meta</span>
+            <span><i class="legend-dot under"></i>Dentro de la meta</span>
+            <span><i class="legend-line"></i>Meta</span>
+          </div>
+        {% else %}
+          <p class="empty">Todavía no hay días del periodo para mostrar.</p>
+        {% endif %}
+      </section>
+
       <section class="columns">
         <article class="panel">
           <div class="panel-header">
@@ -114,6 +143,15 @@
       </section>
     </main>
 
-    <script src="{{ url_for('static', filename='app.js') }}"></script>
+    <script id="variable-expenses-data" type="application/json">
+      {{ {
+        "labels": gastos_variables.filas|map(attribute="etiqueta")|list,
+        "values": gastos_variables.filas|map(attribute="monto")|list,
+        "goal": gastos_variables.meta,
+        "view": gastos_variables.vista
+      }|tojson }}
+    </script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
+    <script src="{{ url_for('static', filename='app.js', v='20260919-1') }}"></script>
   </body>
 </html>

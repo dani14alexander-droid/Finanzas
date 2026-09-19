@@ -1,6 +1,17 @@
+const chileDateParts = new Intl.DateTimeFormat("en-CA", {
+  day: "2-digit",
+  month: "2-digit",
+  timeZone: "America/Santiago",
+  year: "numeric",
+}).formatToParts(new Date());
+const chileDate = Object.fromEntries(
+  chileDateParts.filter((part) => part.type !== "literal").map((part) => [part.type, part.value])
+);
+const todayInChile = `${chileDate.year}-${chileDate.month}-${chileDate.day}`;
+
 document.querySelectorAll('input[type="date"]').forEach((dateInput) => {
   if (!dateInput.value) {
-    dateInput.valueAsDate = new Date();
+    dateInput.value = todayInChile;
   }
 });
 
@@ -19,12 +30,15 @@ document.querySelectorAll("[data-category-list]").forEach((categoryInput) => {
   categoryPicker.className = "category-picker";
   categoryPicker.setAttribute("aria-label", "Categorias sugeridas");
 
-  const refreshCategoryPicker = () => {
+  const refreshCategoryPicker = (filterText = "") => {
     const listId = typeSelect
       ? categoryListsByType[typeSelect.value] || "categorias-todas"
       : categoryInput.getAttribute("list") || "categorias-todas";
     const dataList = document.getElementById(listId);
-    const categories = Array.from(dataList?.options || []).map((option) => option.value);
+    const normalizedFilter = filterText.trim().toLocaleLowerCase("es");
+    const categories = Array.from(dataList?.options || [])
+      .map((option) => option.value)
+      .filter((category) => category.toLocaleLowerCase("es").startsWith(normalizedFilter));
 
     categoryPicker.replaceChildren();
     const prompt = document.createElement("option");
@@ -43,7 +57,7 @@ document.querySelectorAll("[data-category-list]").forEach((categoryInput) => {
   };
 
   const updateCategoryList = () => {
-    refreshCategoryPicker();
+    refreshCategoryPicker(categoryInput.value);
   };
 
   categoryInput.before(categoryPicker);
@@ -56,6 +70,7 @@ document.querySelectorAll("[data-category-list]").forEach((categoryInput) => {
     }
   });
   categoryInput.addEventListener("input", () => {
+    refreshCategoryPicker(categoryInput.value);
     categoryPicker.value = Array.from(categoryPicker.options).some(
       (option) => option.value === categoryInput.value
     )
@@ -526,3 +541,84 @@ const buildAvailableHistory = () => {
 };
 
 buildAvailableHistory();
+
+const buildVariableExpensesChart = () => {
+  const canvas = document.getElementById("gastosVariablesChart");
+  const data = readChartData("variable-expenses-data");
+  if (!canvas || !data || !window.Chart) {
+    return;
+  }
+
+  const goal = Number(data.goal || 0);
+  const values = data.values.map((value) => Number(value || 0));
+  new Chart(canvas, {
+    type: "bar",
+    data: {
+      labels: data.labels,
+      datasets: [
+        {
+          label: "Gasto variable",
+          data: values,
+          backgroundColor: values.map((value) => value > goal ? "#1f6feb" : "#7dd3fc"),
+          borderColor: values.map((value) => value > goal ? "#1d4ed8" : "#38bdf8"),
+          borderRadius: 5,
+          borderWidth: 1,
+          order: 2,
+        },
+        {
+          type: "line",
+          label: "Meta",
+          data: data.labels.map(() => goal),
+          borderColor: "#dc2626",
+          borderDash: [8, 6],
+          borderWidth: 2,
+          pointRadius: 0,
+          tension: 0,
+          order: 1,
+        },
+      ],
+    },
+    options: {
+      maintainAspectRatio: false,
+      responsive: true,
+      interaction: { intersect: false, mode: "index" },
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          callbacks: {
+            label: (context) => {
+              const value = Number(context.raw || 0);
+              if (context.dataset.type === "line") {
+                return `Meta: ${moneyFormatter.format(value)}`;
+              }
+              const difference = value - goal;
+              const comparison = difference > 0
+                ? `Sobre la meta por ${moneyFormatter.format(difference)}`
+                : difference < 0
+                  ? `Bajo la meta por ${moneyFormatter.format(Math.abs(difference))}`
+                  : "Exactamente en la meta";
+              return [`Gasto: ${moneyFormatter.format(value)}`, comparison];
+            },
+          },
+        },
+      },
+      scales: {
+        x: {
+          grid: { display: false },
+          ticks: { color: "#667085", maxRotation: data.view === "diaria" ? 45 : 0 },
+        },
+        y: {
+          beginAtZero: true,
+          grid: { color: "#d9e0ea" },
+          ticks: {
+            callback: (value) => moneyFormatter.format(value),
+            color: "#667085",
+            maxTicksLimit: 6,
+          },
+        },
+      },
+    },
+  });
+};
+
+buildVariableExpensesChart();

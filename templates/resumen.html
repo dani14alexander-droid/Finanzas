@@ -212,7 +212,7 @@
               </thead>
               <tbody>
                 <tr class="inline-add-row" {{ '' if agregar_rapido else 'hidden' }}>
-                    <td><input form="quick-add-movement" type="date" name="fecha" required></td>
+                    <td><input form="quick-add-movement" type="date" name="fecha" value="{{ fecha_hoy_chile }}" required></td>
                     <td>
                       <select form="quick-add-movement" name="tipo" required>
                         <option>Gasto</option>
@@ -269,6 +269,6 @@
     {% include "_categorias_datalist.html" %}
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.2.0"></script>
-    <script src="{{ url_for('static', filename='app.js', v='20260829-8') }}"></script>
+    <script src="{{ url_for('static', filename='app.js', v='20260919-1') }}"></script>
   </body>
 </html>

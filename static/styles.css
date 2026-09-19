@@ -882,6 +882,64 @@ th {
   width: 100% !important;
 }
 
+.variable-expenses-panel {
+  margin-top: 30px;
+}
+
+.variable-expenses-head {
+  align-items: flex-start;
+}
+
+.variable-expenses-head h2 {
+  margin-bottom: 6px;
+}
+
+.variable-expenses-chart-wrap {
+  height: 360px;
+}
+
+.variable-expenses-chart-wrap canvas {
+  height: 360px !important;
+}
+
+.variable-expenses-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 18px;
+  justify-content: center;
+  margin-top: 12px;
+  color: var(--muted);
+  font-size: 0.86rem;
+  font-weight: 700;
+}
+
+.variable-expenses-legend span {
+  align-items: center;
+  display: inline-flex;
+  gap: 7px;
+}
+
+.legend-dot {
+  border-radius: 3px;
+  display: inline-block;
+  height: 12px;
+  width: 12px;
+}
+
+.legend-dot.over {
+  background: #1f6feb;
+}
+
+.legend-dot.under {
+  background: #7dd3fc;
+}
+
+.legend-line {
+  border-top: 2px dashed #dc2626;
+  display: inline-block;
+  width: 22px;
+}
+
 .y-axis {
   color: var(--muted);
   display: flex;
