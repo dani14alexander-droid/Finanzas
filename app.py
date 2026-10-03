@@ -1355,29 +1355,66 @@ def eliminar_movimientos_deuda(ticket, origen=None):
 def saldo_ciclo_anterior(movimientos, fecha_inicio):
     mes_anterior = sumar_meses(date(fecha_inicio.year, fecha_inicio.month, 1), -1)
     inicio_anterior = fecha_movimiento(penultimo_dia_habil_mes(mes_anterior))
-    fin_anterior = fecha_inicio - timedelta(days=1)
+    return disponible_ciclo_desde_inicio(movimientos, inicio_anterior)
+
+
+def disponible_ciclo_desde_inicio(movimientos, inicio, cache=None):
+    """Calcula el disponible de un ciclo con la misma lógica del resumen."""
+    cache = cache if cache is not None else {}
+    clave = inicio.isoformat()
+    if clave in cache:
+        return cache[clave]
+
+    proximo_mes = sumar_meses(inicio, 1)
+    fin = fecha_movimiento(penultimo_dia_habil_mes(proximo_mes)) - timedelta(days=1)
+    items = [
+        item
+        for item in movimientos
+        if (
+            item.get("periodo_forzado") == inicio.isoformat()
+            or (
+                not item.get("periodo_forzado")
+                and (fecha := fecha_movimiento(item.get("fecha", "")))
+                and inicio <= fecha <= fin
+            )
+        )
+    ]
+    # Estos registros son arrastres guardados por versiones anteriores. El
+    # arrastre válido se agrega abajo usando el disponible del ciclo previo.
+    items = [
+        item
+        for item in items
+        if item.get("categoria", "").strip().lower() != "saldo anterior"
+    ]
+    if not items:
+        cache[clave] = 0
+        return 0
+
+    mes_mas_antiguo = sumar_meses(date(inicio.year, inicio.month, 1), -1)
+    inicio_anterior = fecha_movimiento(penultimo_dia_habil_mes(mes_mas_antiguo))
+    saldo_anterior = disponible_ciclo_desde_inicio(movimientos, inicio_anterior, cache)
     descuentos_compartidos = descuentos_compras_compartidas(leer_deudas())
     subgastos_agrupados = subgastos_por_movimiento()
-    saldo = 0
-    for item in movimientos:
-        fecha = fecha_movimiento(item.get("fecha", ""))
-        periodo_forzado = (item.get("periodo_forzado") or "").strip()
-        if periodo_forzado:
-            if periodo_forzado != inicio_anterior.isoformat():
-                continue
-        elif not fecha or not (inicio_anterior <= fecha <= fin_anterior):
-            continue
-        if item.get("tipo") == "Ingreso":
-            saldo += float(item.get("monto") or 0)
-        elif item.get("tipo") == "Gasto":
-            saldo -= monto_efectivo_movimiento(
-                item, descuentos_compartidos, subgastos_agrupados
-            )
-        elif item.get("tipo") == "Ahorro":
-            saldo -= monto_ahorro_neto(item, subgastos_agrupados)
-            if item.get("categoria", "").strip().lower() == CATEGORIA_AHORRO_FLEXIBLE.lower():
-                saldo -= total_detalles_movimiento(item, subgastos_agrupados)
-    return saldo
+    ingresos = sum(item["monto"] for item in items if item["tipo"] == "Ingreso")
+    gastos = sum(
+        monto_efectivo_movimiento(item, descuentos_compartidos, subgastos_agrupados)
+        for item in items
+        if item["tipo"] == "Gasto"
+    )
+    gastos += sum(
+        total_detalles_movimiento(item, subgastos_agrupados)
+        for item in items
+        if item.get("tipo") == "Ahorro"
+        and item.get("categoria", "").strip().lower() == CATEGORIA_AHORRO_FLEXIBLE.lower()
+    )
+    ahorros = sum(
+        monto_ahorro_neto(item, subgastos_agrupados)
+        for item in items
+        if item["tipo"] == "Ahorro"
+    )
+    disponible = saldo_anterior + ingresos - gastos - ahorros
+    cache[clave] = disponible
+    return disponible
 
 
 def ciclo_anterior_tiene_informacion(movimientos, inicio):
@@ -1501,18 +1538,8 @@ def movimientos_de_ciclo(movimientos, clave):
             else (fecha := fecha_movimiento(item.get("fecha", ""))) and inicio <= fecha <= fin
         )
     ]
-    # Los arrastres antiguos podían quedar guardados como un Ingreso y un
-    # Gasto con categoría "Saldo anterior". Incorporarlos al saldo neto evita
-    # mostrar el ingreso positivo separado del gasto agregado posteriormente.
-    saldo_ajustes_legacy = 0
-    for item in items:
-        if item.get("categoria", "").strip().lower() != "saldo anterior":
-            continue
-        monto = float(item.get("monto") or 0)
-        if item.get("tipo") == "Ingreso":
-            saldo_ajustes_legacy += monto
-        elif item.get("tipo") in {"Gasto", "Ahorro"}:
-            saldo_ajustes_legacy -= monto
+    # Los arrastres antiguos no se muestran como movimientos independientes:
+    # el único arrastre válido es el disponible recalculado del ciclo previo.
     items = [
         item
         for item in items
@@ -1523,7 +1550,6 @@ def movimientos_de_ciclo(movimientos, clave):
         if ciclo_anterior_tiene_informacion(movimientos, inicio)
         else 0
     )
-    saldo_anterior += saldo_ajustes_legacy
     if abs(saldo_anterior) >= 0.01:
         items.append(
             {
