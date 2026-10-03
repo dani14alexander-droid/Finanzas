@@ -1502,8 +1502,17 @@ def movimientos_de_ciclo(movimientos, clave):
         )
     ]
     # Los arrastres antiguos podían quedar guardados como un Ingreso y un
-    # Gasto con categoría "Saldo anterior". No deben competir con el saldo
-    # recalculado: se consolidan usando todos los movimientos del ciclo previo.
+    # Gasto con categoría "Saldo anterior". Incorporarlos al saldo neto evita
+    # mostrar el ingreso positivo separado del gasto agregado posteriormente.
+    saldo_ajustes_legacy = 0
+    for item in items:
+        if item.get("categoria", "").strip().lower() != "saldo anterior":
+            continue
+        monto = float(item.get("monto") or 0)
+        if item.get("tipo") == "Ingreso":
+            saldo_ajustes_legacy += monto
+        elif item.get("tipo") in {"Gasto", "Ahorro"}:
+            saldo_ajustes_legacy -= monto
     items = [
         item
         for item in items
@@ -1514,6 +1523,7 @@ def movimientos_de_ciclo(movimientos, clave):
         if ciclo_anterior_tiene_informacion(movimientos, inicio)
         else 0
     )
+    saldo_anterior += saldo_ajustes_legacy
     if abs(saldo_anterior) >= 0.01:
         items.append(
             {
