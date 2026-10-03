@@ -2800,6 +2800,11 @@ def agregar_desde_resumen():
     if filtro_tipo in TIPOS_VALIDOS:
         parametros_resumen["tipo"] = filtro_tipo
     parametros_resumen["agregar"] = "1"
+    # Mantener la fecha ingresada para que sea cómoda la carga consecutiva
+    # de varios movimientos del mismo día.
+    fecha_agregar = request.form.get("fecha", "").strip()
+    if fecha_agregar:
+        parametros_resumen["agregar_fecha"] = fecha_agregar
     return redirect(f"{url_for('resumen', **parametros_resumen)}#movimientos")
 
 
@@ -3344,6 +3349,7 @@ def resumen():
     busqueda = request.args.get("q", "").strip()
     filtro_tipo = request.args.get("tipo", "Todos")
     agregar_rapido = request.args.get("agregar") == "1"
+    fecha_agregar = request.args.get("agregar_fecha", "").strip() or fecha_hoy_chile().isoformat()
     semanas, _, _ = calcular_semanas_restantes(fecha_hoy_chile(), periodo_fin)
     descuentos_compartidos = descuentos_compras_compartidas(leer_deudas())
     subgastos_agrupados = subgastos_por_movimiento()
@@ -3502,6 +3508,7 @@ def resumen():
         busqueda=busqueda,
         filtro_tipo=filtro_tipo,
         agregar_rapido=agregar_rapido,
+        fecha_agregar=fecha_agregar,
         gastos_variables=gastos_variables,
         ciclo_anterior_etiqueta=(ciclo_anterior["etiqueta"] if ciclo_anterior else "Sin ciclo anterior"),
         fecha_hoy_chile=fecha_hoy_chile().isoformat(),
