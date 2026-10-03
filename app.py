@@ -1501,8 +1501,14 @@ def movimientos_de_ciclo(movimientos, clave):
             else (fecha := fecha_movimiento(item.get("fecha", ""))) and inicio <= fecha <= fin
         )
     ]
-    if not items:
-        return [], inicio, fin
+    # Los arrastres antiguos podían quedar guardados como un Ingreso y un
+    # Gasto con categoría "Saldo anterior". No deben competir con el saldo
+    # recalculado: se consolidan usando todos los movimientos del ciclo previo.
+    items = [
+        item
+        for item in items
+        if item.get("categoria", "").strip().lower() != "saldo anterior"
+    ]
     saldo_anterior = (
         saldo_ciclo_anterior(movimientos, inicio)
         if ciclo_anterior_tiene_informacion(movimientos, inicio)
