@@ -911,6 +911,47 @@ th {
   height: 360px !important;
 }
 
+.variable-expenses-stats {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin: 14px 0 8px;
+}
+
+.variable-stock-card {
+  border: 2px solid;
+  border-radius: 6px;
+  color: #fff;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px 14px;
+}
+
+.variable-stock-card.upperstock {
+  background: #1f6feb;
+  border-color: #1557b0;
+}
+
+.variable-stock-card.understock {
+  background: #69c5e8;
+  border-color: #2389b3;
+}
+
+.variable-stock-card span {
+  font-size: 1.05rem;
+  font-weight: 800;
+}
+
+.variable-stock-card strong {
+  font-size: 1.45rem;
+}
+
+.variable-stock-card small {
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+
 .variable-expenses-legend {
   display: flex;
   flex-wrap: wrap;

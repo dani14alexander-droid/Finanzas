@@ -72,6 +72,7 @@
           <div>
             <h2>Gastos variables del ciclo</h2>
             <p class="hint-inline">
+              Gasto promedio hasta ahora: {{ gastos_variables.gasto_promedio|moneda }}.
               Meta {{ 'diaria' if gastos_variables.vista == 'diaria' else 'semanal' }}:
               {{ gastos_variables.meta|moneda }} · No incluye gastos fijos ni ahorros.
             </p>
@@ -85,6 +86,18 @@
           </form>
         </div>
         {% if gastos_variables.filas %}
+          <div class="variable-expenses-stats" aria-label="Upperstock y understock">
+            <article class="variable-stock-card upperstock">
+              <span>Upperstock</span>
+              <strong>{{ gastos_variables.upperstock|moneda }}</strong>
+              <small>{{ gastos_variables.dias_sobre_meta }} días sobre la meta diaria</small>
+            </article>
+            <article class="variable-stock-card understock">
+              <span>Understock</span>
+              <strong>{{ gastos_variables.understock|moneda }}</strong>
+              <small>{{ gastos_variables.dias_bajo_meta }} días bajo la meta diaria</small>
+            </article>
+          </div>
           <div class="chart-canvas-wrap variable-expenses-chart-wrap">
             <canvas id="gastosVariablesChart"></canvas>
           </div>

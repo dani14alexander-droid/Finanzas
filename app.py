@@ -2236,7 +2236,8 @@ def datos_gastos_variables(datos_dashboard, vista="diaria"):
     )
     dias_periodo = max((fin - inicio).days + 1, 1)
     cantidad_periodos = dias_periodo if vista == "diaria" else max(ceil(dias_periodo / 7), 1)
-    meta = (ingresos_periodo - compromiso_mensual) / cantidad_periodos
+    meta_diaria = (ingresos_periodo - compromiso_mensual) / dias_periodo
+    meta = meta_diaria if vista == "diaria" else (ingresos_periodo - compromiso_mensual) / cantidad_periodos
 
     descuentos = descuentos_compras_compartidas(leer_deudas())
     subgastos = subgastos_por_movimiento()
@@ -2337,12 +2338,31 @@ def datos_gastos_variables(datos_dashboard, vista="diaria"):
                     "categorias": resumen_categorias(detalles),
                 }
             )
+    dias_transcurridos = max((fin_visible - inicio).days + 1, 1)
+    gasto_total_visible = sum(gastos_por_fecha.values())
+    gasto_promedio = gasto_total_visible / dias_transcurridos
+    montos_diarios = [
+        gastos_por_fecha.get(inicio + timedelta(days=indice), 0)
+        for indice in range(dias_transcurridos)
+    ]
+    upperstock = sum(max(monto - meta_diaria, 0) for monto in montos_diarios)
+    understock = sum(max(meta_diaria - monto, 0) for monto in montos_diarios)
+    dias_sobre_meta = sum(monto > meta_diaria for monto in montos_diarios)
+    dias_bajo_meta = sum(monto < meta_diaria for monto in montos_diarios)
+
     return {
         "vista": vista,
         "meta": meta,
+        "meta_diaria": meta_diaria,
         "ingresos": ingresos_periodo,
         "compromiso": compromiso_mensual,
         "filas": filas,
+        "gasto_promedio": gasto_promedio,
+        "upperstock": upperstock,
+        "understock": understock,
+        "dias_sobre_meta": dias_sobre_meta,
+        "dias_bajo_meta": dias_bajo_meta,
+        "dias_transcurridos": dias_transcurridos,
     }
 
 
