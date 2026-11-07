@@ -1792,6 +1792,21 @@ def estado_vigencia_automatizacion(automatizacion, movimientos, periodo):
     return meses_pagados, vencida
 
 
+def siguiente_periodo_ciclo(periodo):
+    fecha = fecha_movimiento(periodo)
+    formato_fecha_completa = fecha is not None
+    if not fecha:
+        try:
+            anio, mes = [int(parte) for parte in periodo.split("-")[:2]]
+            fecha = date(anio, mes, 1)
+        except (TypeError, ValueError):
+            return periodo
+    siguiente = sumar_meses(fecha, 1)
+    if formato_fecha_completa:
+        return siguiente.isoformat()
+    return f"{siguiente.year}-{siguiente.month:02d}"
+
+
 def actualizar_automatizaciones_por_movimiento(movimiento, movimientos_actuales):
     periodo = periodo_item_ciclo(movimiento, movimientos_actuales)
     if not periodo:
@@ -2982,9 +2997,7 @@ def automatizacion():
             and periodo in periodos_coincidentes
             and meses_base >= len(periodos_previos) + 1
         ):
-            anio, mes = [int(parte) for parte in periodo.split("-")]
-            siguiente = sumar_meses(date(anio, mes, 1), 1)
-            vigencia_desde = f"{siguiente.year}-{siguiente.month:02d}"
+            vigencia_desde = siguiente_periodo_ciclo(periodo)
         automatizaciones = leer_automatizaciones()
         automatizaciones.append(
             {
@@ -3224,9 +3237,7 @@ def editar_automatizacion(automatizacion_id):
         if vigencia_meses:
             movimientos = leer_movimientos()
             if periodo_inicio_vigencia in periodos_movimiento_automatizacion(item, movimientos):
-                anio, mes = [int(parte) for parte in periodo_inicio_vigencia.split("-")]
-                siguiente = sumar_meses(date(anio, mes, 1), 1)
-                periodo_inicio_vigencia = f"{siguiente.year}-{siguiente.month:02d}"
+                periodo_inicio_vigencia = siguiente_periodo_ciclo(periodo_inicio_vigencia)
         item.update(
             {
                 "tipo": tipo,
@@ -3245,7 +3256,24 @@ def editar_automatizacion(automatizacion_id):
         return redirect(url_for("automatizacion"))
 
     item["meses_pagados"] = item.get("meses_pagados_actuales", item.get("meses_pagados", 0))
-    return render_template("editar_automatizacion.html", item=item)
+    movimientos = leer_movimientos()
+    registros = [
+        {
+            **movimiento,
+            "periodo_registro": periodo_item_ciclo(movimiento, movimientos),
+        }
+        for movimiento in movimientos
+        if movimiento_coincide_automatizacion(movimiento, item)
+    ]
+    registros.sort(key=lambda movimiento: movimiento.get("fecha", ""), reverse=True)
+    periodos_registrados = {registro["periodo_registro"] for registro in registros}
+    return render_template(
+        "editar_automatizacion.html",
+        item=item,
+        registros=registros,
+        cantidad_registros=len(registros),
+        cantidad_periodos=len(periodos_registrados),
+    )
 
 
 @app.route("/automatizacion/eliminar/<int:automatizacion_id>", methods=["POST"])
