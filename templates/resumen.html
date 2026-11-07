@@ -5,20 +5,10 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Resumen</title>
     <link rel="manifest" href="{{ url_for('static', filename='manifest.json') }}">
-    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css', v='20261107-1') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css', v='20261107-3') }}">
   </head>
   <body>
-    <header class="topbar">
-        <a class="brand" href="{{ url_for('index') }}">Finanzas</a>
-      <nav>
-        <a href="{{ url_for('index') }}">Dashboard</a>
-        <a href="{{ url_for('planificacion') }}">Planificacion</a>
-        <a href="{{ url_for('macrocategorias') }}">Macros</a>
-        <a href="{{ url_for('historico') }}">Historico</a>
-        <a href="{{ url_for('automatizacion') }}">Gastos fijos</a>
-        <a href="{{ url_for('deudas') }}">Deudas</a>
-      </nav>
-    </header>
+    {% include "_navigation.html" %}
 
     <main class="container">
       <section class="dashboard-head">
@@ -341,6 +331,6 @@
     {% include "_categorias_datalist.html" %}
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.2.0"></script>
-    <script src="{{ url_for('static', filename='app.js', v='20261107-1') }}"></script>
+    <script src="{{ url_for('static', filename='app.js', v='20261107-3') }}"></script>
   </body>
 </html>

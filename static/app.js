@@ -640,8 +640,8 @@ const buildVariableExpensesChart = () => {
         {
           label: "Gasto variable",
           data: values,
-          backgroundColor: values.map((value) => value > goal ? "#1f6feb" : "#7dd3fc"),
-          borderColor: values.map((value) => value > goal ? "#1d4ed8" : "#38bdf8"),
+          backgroundColor: values.map((value) => value > goal ? "#1758c8" : "#b7a3f5"),
+          borderColor: values.map((value) => value > goal ? "#1758c8" : "#b7a3f5"),
           borderRadius: 5,
           borderWidth: 1,
           order: 2,

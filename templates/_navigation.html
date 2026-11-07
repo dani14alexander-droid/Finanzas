@@ -1,0 +1,14 @@
+<header class="topbar">
+  <a class="brand" href="{{ url_for('index') }}"><span class="brand-mark">F</span><span>Finanzas</span></a>
+  <nav aria-label="Navegación principal">
+    {% for endpoint, label, icon in [
+      ('index', 'Panel', 'home'), ('resumen', 'Resumen', 'chart'),
+      ('planificacion', 'Planificación', 'calendar'), ('macrocategorias', 'Macros', 'sliders'),
+      ('historico', 'Histórico', 'clock'), ('automatizacion', 'Gastos fijos', 'layers'),
+      ('deudas', 'Deudas', 'card')
+    ] %}
+      <a href="{{ url_for(endpoint) }}"><svg class="nav-icon" aria-hidden="true"><use href="{{ url_for('static', filename='icons.svg') }}#{{ icon }}"></use></svg><span>{{ label }}</span></a>
+    {% endfor %}
+  </nav>
+  <div class="sidebar-footer"><span class="sidebar-footer-dot"></span> Tu espacio financiero</div>
+</header>

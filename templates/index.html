@@ -3,31 +3,24 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <meta name="theme-color" content="#101b31">
+    <meta name="theme-color" content="#0a193b">
     <title>Finanzas · Panel</title>
     <link rel="manifest" href="{{ url_for('static', filename='manifest.json') }}">
-    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css', v='20261107-2') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css', v='20261107-3') }}">
   </head>
   <body class="finance-dashboard">
-    <header class="topbar">
-      <a class="brand" href="{{ url_for('index') }}"><span class="brand-mark">F</span> Finanzas</a>
-      <nav>
-        <a href="{{ url_for('index') }}">Panel</a>
-        <a href="{{ url_for('resumen') }}">Resumen</a>
-        <a href="{{ url_for('planificacion') }}">Planificación</a>
-        <a href="{{ url_for('macrocategorias') }}">Macros</a>
-        <a href="{{ url_for('historico') }}">Histórico</a>
-        <a href="{{ url_for('automatizacion') }}">Gastos fijos</a>
-        <a href="{{ url_for('deudas') }}">Deudas</a>
-      </nav>
-    </header>
+    {% include "_navigation.html" %}
+
+    {% macro icon(name, class_name='') -%}
+      <svg class="app-icon {{ class_name }}" aria-hidden="true"><use href="{{ url_for('static', filename='icons.svg') }}#{{ name }}"></use></svg>
+    {%- endmacro %}
 
     <main class="container finance-container">
       <section class="finance-hero">
         <div>
           <p class="eyebrow">Tu salud financiera</p>
           <h1>Hola, este es tu panorama</h1>
-          <p class="hero-caption">Ciclo {{ periodo_inicio.strftime("%d %b") }} — {{ periodo_fin.strftime("%d %b %Y") }} · Actualizado {{ fecha_calculo.strftime("%d-%m-%Y") }}</p>
+          <p class="hero-caption">{{ icon('calendar') }} Ciclo {{ periodo_inicio.strftime("%d %b") }} — {{ periodo_fin.strftime("%d %b %Y") }} <span class="hero-divider">|</span> Actualizado {{ fecha_calculo.strftime("%d-%m-%Y") }}</p>
         </div>
         <div class="hero-actions">
           <a class="button" href="{{ url_for('agregar_por_tipo', tipo='gasto') }}">＋ Registrar movimiento</a>
@@ -37,23 +30,28 @@
 
       <section class="finance-metrics" aria-label="Indicadores del ciclo">
         <article class="metric-card metric-balance">
+          <span class="metric-icon metric-icon-balance">{{ icon('wallet') }}</span>
           <span>Disponible este ciclo</span>
           <strong class="{{ 'positive' if disponible >= 0 else 'negative' }}">{{ disponible|moneda }}</strong>
           <small>Luego de gastos, deudas y ahorros</small>
         </article>
         <article class="metric-card">
+          <span class="metric-icon metric-icon-income">{{ icon('income') }}</span>
           <span>Ingresos</span><strong class="positive">{{ ingresos|moneda }}</strong>
           <small>{{ ingresos_lista|length }} registrados</small>
         </article>
         <article class="metric-card">
+          <span class="metric-icon metric-icon-expense">{{ icon('expense') }}</span>
           <span>Gastos y compromisos</span><strong class="negative">{{ (gastos + deuda)|moneda }}</strong>
           <small>{{ (gastos_lista|length + deudas_lista|length) }} movimientos</small>
         </article>
         <article class="metric-card">
+          <span class="metric-icon metric-icon-saving">{{ icon('coins') }}</span>
           <span>Ahorro del ciclo</span><strong class="saving">{{ ahorros|moneda }}</strong>
           <small>{{ ahorros_acumulados|moneda }} acumulados</small>
         </article>
         <article class="metric-card metric-weekly">
+          <span class="metric-icon metric-icon-weekly">{{ icon('target') }}</span>
           <span>Referencia semanal</span><strong class="{{ 'positive' if cuota_semanal >= 0 else 'negative' }}">{{ cuota_semanal|moneda }}</strong>
           <small>Disponible dividido por semanas restantes</small>
         </article>
@@ -62,14 +60,14 @@
       <section class="insights-layout">
         <article class="panel insights-panel">
           <div class="section-heading">
-            <div><p class="eyebrow">Lectura del periodo</p><h2>Análisis y recomendaciones</h2></div>
+            <div class="section-title">{{ icon('chart', 'section-icon') }}<div><p class="eyebrow">Lectura del periodo</p><h2>Análisis y recomendaciones</h2></div></div>
             <span class="period-chip">{{ fecha_calculo.strftime("%B %Y") }}</span>
           </div>
           {% if recomendaciones %}
             <div class="recommendation-grid">
               {% for recomendacion in recomendaciones %}
                 <article class="recommendation recommendation-{{ recomendacion.tono }}">
-                  <span class="recommendation-icon">{{ '!' if recomendacion.tono in ['warning', 'danger'] else '✓' }}</span>
+                  <span class="recommendation-icon">{{ icon('alert' if recomendacion.tono in ['warning', 'danger'] else 'target' if recomendacion.tono == 'neutral' else 'check') }}</span>
                   <div><h3>{{ recomendacion.titulo }}</h3><p>{{ recomendacion.texto }}</p><small>{{ recomendacion.dato }}</small></div>
                 </article>
               {% endfor %}
@@ -79,10 +77,10 @@
           {% endif %}
         </article>
         <aside class="panel quick-panel">
-          <p class="eyebrow">Accesos rápidos</p><h2>¿Qué necesitas registrar?</h2>
-          <a href="{{ url_for('agregar_por_tipo', tipo='ingreso') }}"><span class="quick-icon income-icon">↙</span><span><b>Ingreso</b><small>Registrar dinero recibido</small></span><span>→</span></a>
-          <a href="{{ url_for('agregar_por_tipo', tipo='gasto') }}"><span class="quick-icon expense-icon">↗</span><span><b>Gasto</b><small>Registrar una compra o pago</small></span><span>→</span></a>
-          <a href="{{ url_for('agregar_por_tipo', tipo='ahorro') }}"><span class="quick-icon saving-icon">◈</span><span><b>Ahorro</b><small>Actualizar tus metas</small></span><span>→</span></a>
+          <div class="section-title quick-heading">{{ icon('bolt', 'section-icon') }}<div><p class="eyebrow">Accesos rápidos</p><h2>¿Qué necesitas registrar?</h2></div></div>
+          <a href="{{ url_for('agregar_por_tipo', tipo='ingreso') }}"><span class="quick-icon income-icon">{{ icon('plus') }}</span><span><b>Ingreso</b><small>Registrar dinero recibido</small></span>{{ icon('arrow', 'quick-arrow') }}</a>
+          <a href="{{ url_for('agregar_por_tipo', tipo='gasto') }}"><span class="quick-icon expense-icon">{{ icon('cart') }}</span><span><b>Gasto</b><small>Registrar una compra o pago</small></span>{{ icon('arrow', 'quick-arrow') }}</a>
+          <a href="{{ url_for('agregar_por_tipo', tipo='ahorro') }}"><span class="quick-icon saving-icon">{{ icon('coins') }}</span><span><b>Ahorro</b><small>Actualizar tus metas</small></span>{{ icon('arrow', 'quick-arrow') }}</a>
         </aside>
       </section>
 
@@ -98,8 +96,8 @@
         </div>
         {% if gastos_variables.filas %}
           <div class="variable-expenses-stats">
-            <article class="variable-stock-card upperstock"><span>Sobre la meta</span><strong>{{ gastos_variables.upperstock|moneda }}</strong><small>{{ gastos_variables.dias_sobre_meta }} días sobre la meta diaria</small></article>
-            <article class="variable-stock-card understock"><span>Margen no utilizado</span><strong>{{ gastos_variables.understock|moneda }}</strong><small>{{ gastos_variables.dias_bajo_meta }} días bajo la meta diaria</small></article>
+            <article class="variable-stock-card upperstock">{{ icon('target', 'stock-icon') }}<span>Sobre la meta</span><strong>{{ gastos_variables.upperstock|moneda }}</strong><small>{{ gastos_variables.dias_sobre_meta }} días sobre la meta diaria</small></article>
+            <article class="variable-stock-card understock">{{ icon('layers', 'stock-icon') }}<span>Margen no utilizado</span><strong>{{ gastos_variables.understock|moneda }}</strong><small>{{ gastos_variables.dias_bajo_meta }} días bajo la meta diaria</small></article>
           </div>
           <div class="chart-canvas-wrap variable-expenses-chart-wrap"><canvas id="gastosVariablesChart"></canvas></div>
           <div class="variable-expenses-legend"><span><i class="legend-dot over"></i>Sobre la meta</span><span><i class="legend-dot under"></i>Dentro de la meta</span><span><i class="legend-line"></i>Meta</span></div>
@@ -108,13 +106,13 @@
       </section>
 
       <section class="columns finance-activity">
-        <article class="panel"><div class="panel-header"><div><p class="eyebrow">Actividad reciente</p><h2>Ingresos</h2></div><a class="mini-link" href="{{ url_for('agregar_por_tipo', tipo='ingreso') }}">＋ Nuevo</a></div>
+        <article class="panel"><div class="panel-header"><div class="section-title">{{ icon('income', 'section-icon') }}<div><p class="eyebrow">Actividad reciente</p><h2>Ingresos</h2></div></div><a class="mini-link" href="{{ url_for('agregar_por_tipo', tipo='ingreso') }}">＋ Nuevo</a></div>
           {% with items=ingresos_lista, empty='No hay ingresos registrados.' %}{% include "_lista_movimientos.html" %}{% endwith %}
         </article>
-        <article class="panel"><div class="panel-header"><div><p class="eyebrow">Actividad reciente</p><h2>Gastos</h2></div><a class="mini-link" href="{{ url_for('agregar_por_tipo', tipo='gasto') }}">＋ Nuevo</a></div>
+        <article class="panel"><div class="panel-header"><div class="section-title">{{ icon('cart', 'section-icon') }}<div><p class="eyebrow">Actividad reciente</p><h2>Gastos</h2></div></div><a class="mini-link" href="{{ url_for('agregar_por_tipo', tipo='gasto') }}">＋ Nuevo</a></div>
           {% with items=gastos_lista, empty='No hay gastos registrados.' %}{% include "_lista_movimientos.html" %}{% endwith %}
         </article>
-        <article class="panel"><div class="panel-header"><div><p class="eyebrow">Actividad reciente</p><h2>Ahorros</h2></div><a class="mini-link" href="{{ url_for('agregar_por_tipo', tipo='ahorro') }}">＋ Nuevo</a></div>
+        <article class="panel"><div class="panel-header"><div class="section-title">{{ icon('coins', 'section-icon') }}<div><p class="eyebrow">Actividad reciente</p><h2>Ahorros</h2></div></div><a class="mini-link" href="{{ url_for('agregar_por_tipo', tipo='ahorro') }}">＋ Nuevo</a></div>
           {% with items=ahorros_lista, empty='No hay ahorros registrados.' %}{% include "_lista_movimientos.html" %}{% endwith %}
         </article>
       </section>
@@ -122,6 +120,6 @@
 
     <script id="variable-expenses-data" type="application/json">{{ {"labels": gastos_variables.filas|map(attribute="etiqueta")|list, "values": gastos_variables.filas|map(attribute="monto")|list, "details": gastos_variables.filas, "goal": gastos_variables.meta, "view": gastos_variables.vista}|tojson }}</script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
-    <script src="{{ url_for('static', filename='app.js', v='20261107-2') }}"></script>
+    <script src="{{ url_for('static', filename='app.js', v='20261107-3') }}"></script>
   </body>
 </html>
