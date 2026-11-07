@@ -9,6 +9,30 @@ const chileDate = Object.fromEntries(
 );
 const todayInChile = `${chileDate.year}-${chileDate.month}-${chileDate.day}`;
 
+const currentPath = window.location.pathname.replace(/\/+$/, "") || "/";
+const currentSection = currentPath.startsWith("/automatizacion") || currentPath.startsWith("/gastos-fijos")
+  ? "/automatizacion"
+  : currentPath.startsWith("/deudas")
+    ? "/deudas"
+    : currentPath.startsWith("/resumen")
+      ? "/resumen"
+      : currentPath.startsWith("/planificacion")
+        ? "/planificacion"
+        : currentPath.startsWith("/macrocategorias")
+          ? "/macrocategorias"
+          : currentPath.startsWith("/historico")
+            ? "/historico"
+            : currentPath === "/" || currentPath.startsWith("/agregar") || currentPath.startsWith("/editar/")
+              ? "/"
+              : "";
+
+document.querySelectorAll(".topbar nav a").forEach((link) => {
+  const linkPath = new URL(link.href, window.location.origin).pathname.replace(/\/+$/, "") || "/";
+  if (currentSection && linkPath === currentSection) {
+    link.setAttribute("aria-current", "page");
+  }
+});
+
 document.querySelectorAll('input[type="date"]').forEach((dateInput) => {
   if (!dateInput.value) {
     dateInput.value = todayInChile;

@@ -1,4 +1,5 @@
 from pathlib import Path
+from bisect import bisect_right
 from datetime import date, datetime, timedelta
 from zoneinfo import ZoneInfo
 from io import BytesIO
@@ -1764,14 +1765,38 @@ def movimiento_coincide_automatizacion(movimiento, automatizacion):
 
 
 def periodos_movimiento_automatizacion(automatizacion, movimientos):
+    periodos_ciclo = periodos_movimientos_ciclos(movimientos)
     return sorted(
         {
-            periodo_item_ciclo(movimiento, movimientos)
-            for movimiento in movimientos
+            periodo
+            for movimiento, periodo in zip(movimientos, periodos_ciclo)
             if movimiento_coincide_automatizacion(movimiento, automatizacion)
-            and periodo_item_ciclo(movimiento, movimientos)
+            and periodo
         }
     )
+
+
+def periodos_movimientos_ciclos(movimientos):
+    sueldos = sorted(
+        fecha
+        for movimiento in movimientos
+        if es_sueldo(movimiento) and (fecha := fecha_movimiento(movimiento.get("fecha", "")))
+    )
+    periodos = []
+    for movimiento in movimientos:
+        forzado = (movimiento.get("periodo_forzado") or "").strip()
+        fecha = fecha_movimiento(movimiento.get("fecha", ""))
+        if forzado:
+            periodos.append(forzado)
+        elif not fecha:
+            periodos.append("")
+        else:
+            indice_sueldo = bisect_right(sueldos, fecha) - 1
+            if indice_sueldo >= 0:
+                periodos.append(sueldos[indice_sueldo].isoformat())
+            else:
+                periodos.append(f"{fecha.year}-{fecha.month:02d}")
+    return periodos
 
 
 def movimiento_coincide_anteriores(movimiento, automatizacion):
@@ -1792,10 +1817,10 @@ def movimiento_coincide_anteriores(movimiento, automatizacion):
 
 def candidatos_recuperar_automatizaciones(movimientos, automatizaciones):
     grupos = {}
-    for movimiento in movimientos:
+    periodos_ciclo = periodos_movimientos_ciclos(movimientos)
+    for movimiento, periodo in zip(movimientos, periodos_ciclo):
         if movimiento.get("tipo") not in TIPOS_AUTOMATIZACION:
             continue
-        periodo = periodo_item_ciclo(movimiento, movimientos)
         if not periodo:
             continue
         tipo = movimiento.get("tipo", "")
@@ -3095,8 +3120,6 @@ def automatizacion():
         escribir_automatizaciones(automatizaciones)
         return redirect(url_for("automatizacion"))
 
-    asegurar_sueldo_automatico()
-    periodo = periodo_actual()
     automatizaciones = sorted(
         sincronizar_automatizaciones_confirmadas(),
         key=lambda item: (
@@ -3105,6 +3128,7 @@ def automatizacion():
             item["tipo"].lower(),
         ),
     )
+    periodo = periodo_actual()
     vigentes = [item for item in automatizaciones if not item.get("vigencia_vencida")]
     vencidas = [item for item in automatizaciones if item.get("vigencia_vencida")]
     pendientes = [
@@ -3143,10 +3167,11 @@ def automatizacion():
         if item["activo"] and item["tipo"] == "Ahorro" and not esta_anulada(item, periodo)
     )
     compromiso_mensual = total_gastos_fijos + total_ahorros_planificados
-    sueldo = ultimo_sueldo(leer_movimientos())
+    movimientos_pagina = leer_movimientos()
+    sueldo = ultimo_sueldo(movimientos_pagina)
     sueldo_monto = sueldo[1]["monto"] if sueldo else 0
     candidatos_recuperar = candidatos_recuperar_automatizaciones(
-        leer_movimientos(), automatizaciones
+        movimientos_pagina, automatizaciones
     )
     return render_template(
         "automatizacion.html",
