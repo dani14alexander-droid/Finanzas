@@ -196,6 +196,42 @@
         </article>
       </section>
 
+      <section class="panel section-gap">
+        <div class="panel-header">
+          <h2>Recuperar gastos fijos anteriores</h2>
+          <span class="hint-inline">Sugiero registros repetidos en 2 o mas ciclos que ya no tienen gasto fijo guardado.</span>
+        </div>
+        {% if candidatos_recuperar %}
+          <div class="automation-list">
+            {% for candidato in candidatos_recuperar %}
+              <form class="automation-item" method="post" action="{{ url_for('recuperar_automatizacion') }}">
+                <input type="hidden" name="clave" value="{{ candidato.clave }}">
+                <div>
+                  <strong>{{ candidato.descripcion or candidato.categoria }}</strong>
+                  <span>{{ candidato.tipo }} · {{ candidato.categoria }} · {{ candidato.monto|moneda }}</span>
+                  <span>{{ candidato.meses_pagados }} ciclos registrados; ultimo: {{ candidato.ultima_fecha|fecha_corta }}</span>
+                </div>
+                <div>
+                  <label>
+                    Vigencia en meses (0 = indefinida)
+                    <input type="number" name="vigencia_meses" min="0" step="1" value="{{ candidato.vigencia_meses }}">
+                  </label>
+                  <label>
+                    Meses pagados
+                    <input type="number" name="meses_pagados" min="0" step="1" value="{{ candidato.meses_pagados }}">
+                  </label>
+                </div>
+                <div class="automation-actions">
+                  <button type="submit">Recuperar</button>
+                </div>
+              </form>
+            {% endfor %}
+          </div>
+        {% else %}
+          <p class="empty">No encontre movimientos repetidos de gastos fijos eliminados.</p>
+        {% endif %}
+      </section>
+
       {% if vencidas %}
         <section class="panel section-gap">
           <div class="panel-header">

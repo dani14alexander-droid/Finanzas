@@ -8,6 +8,7 @@ import calendar
 import csv
 import json
 import os
+import re
 import uuid
 
 try:
@@ -1789,6 +1790,76 @@ def movimiento_coincide_anteriores(movimiento, automatizacion):
     return bool(descripcion_coincide or monto_coincide)
 
 
+def candidatos_recuperar_automatizaciones(movimientos, automatizaciones):
+    grupos = {}
+    for movimiento in movimientos:
+        if movimiento.get("tipo") not in TIPOS_AUTOMATIZACION:
+            continue
+        periodo = periodo_item_ciclo(movimiento, movimientos)
+        if not periodo:
+            continue
+        tipo = movimiento.get("tipo", "")
+        categoria = (movimiento.get("categoria") or "").strip()
+        descripcion = (movimiento.get("descripcion") or "").strip()
+        monto = round(float(movimiento.get("monto") or 0), 2)
+        if descripcion:
+            clave_grupo = (tipo, categoria.lower(), descripcion.lower())
+        else:
+            clave_grupo = (tipo, categoria.lower(), monto)
+        grupo = grupos.setdefault(
+            clave_grupo,
+            {"tipo": tipo, "categoria": categoria, "descripcion": descripcion, "periodos": {}},
+        )
+        actual = grupo["periodos"].get(periodo)
+        if actual is None or movimiento.get("fecha", "") > actual.get("fecha", ""):
+            grupo["periodos"][periodo] = movimiento
+
+    candidatos = []
+    for clave_grupo, grupo in grupos.items():
+        periodos = sorted(grupo["periodos"])
+        if len(periodos) < 2:
+            continue
+        ultimo_movimiento = grupo["periodos"][periodos[-1]]
+        candidato = {
+            "tipo": grupo["tipo"],
+            "categoria": grupo["categoria"],
+            "descripcion": grupo["descripcion"],
+            "monto": round(float(ultimo_movimiento.get("monto") or 0), 2),
+            "dia_mes": (fecha_movimiento(ultimo_movimiento.get("fecha", "")) or fecha_hoy_chile()).day,
+            "meses_pagados": len(periodos),
+            "ultimo_periodo": periodos[-1],
+            "ultima_fecha": ultimo_movimiento.get("fecha", ""),
+        }
+        if candidato["descripcion"]:
+            vigencia_match = re.search(
+                r"(?:x|por)\s*(\d+)\s*mes(?:es)?\b",
+                candidato["descripcion"],
+                flags=re.IGNORECASE,
+            )
+        else:
+            vigencia_match = None
+        candidato["vigencia_meses"] = int(vigencia_match.group(1)) if vigencia_match else 0
+        candidato["clave"] = json.dumps(clave_grupo, ensure_ascii=False, separators=(",", ":"))
+        ya_guardado = any(
+            item.get("tipo") == candidato["tipo"]
+            and mismo_texto(item.get("categoria"), candidato["categoria"])
+            and (
+                mismo_texto(item.get("descripcion"), candidato["descripcion"])
+                if candidato["descripcion"]
+                else not item.get("descripcion", "").strip()
+                and abs(float(item.get("monto") or 0) - candidato["monto"]) < 0.01
+            )
+            for item in automatizaciones
+        )
+        if not ya_guardado:
+            candidatos.append(candidato)
+    return sorted(
+        candidatos,
+        key=lambda item: (item["ultima_fecha"], item["descripcion"].lower()),
+        reverse=True,
+    )
+
+
 def estado_vigencia_automatizacion(automatizacion, movimientos):
     vigencia = max(int(automatizacion.get("vigencia_meses") or 0), 0)
     meses_base = max(int(automatizacion.get("meses_pagados") or 0), 0)
@@ -3074,11 +3145,15 @@ def automatizacion():
     compromiso_mensual = total_gastos_fijos + total_ahorros_planificados
     sueldo = ultimo_sueldo(leer_movimientos())
     sueldo_monto = sueldo[1]["monto"] if sueldo else 0
+    candidatos_recuperar = candidatos_recuperar_automatizaciones(
+        leer_movimientos(), automatizaciones
+    )
     return render_template(
         "automatizacion.html",
         automatizaciones=automatizaciones,
         vigentes=vigentes,
         vencidas=vencidas,
+        candidatos_recuperar=candidatos_recuperar,
         pendientes=pendientes,
         confirmadas=confirmadas,
         anuladas=anuladas,
@@ -3089,6 +3164,47 @@ def automatizacion():
         compromiso_mensual=compromiso_mensual,
         sueldo_menos_compromisos=sueldo_monto - compromiso_mensual,
     )
+
+
+@app.route("/automatizacion/recuperar", methods=["POST"])
+def recuperar_automatizacion():
+    automatizaciones = leer_automatizaciones()
+    candidatos = candidatos_recuperar_automatizaciones(leer_movimientos(), automatizaciones)
+    clave = request.form.get("clave", "")
+    candidato = next((item for item in candidatos if item["clave"] == clave), None)
+    if not candidato:
+        return redirect(url_for("automatizacion"))
+    try:
+        vigencia_meses = max(int(request.form.get("vigencia_meses", 0) or 0), 0)
+    except ValueError:
+        vigencia_meses = candidato["vigencia_meses"]
+    try:
+        meses_pagados = max(int(request.form.get("meses_pagados", 0) or 0), candidato["meses_pagados"])
+    except ValueError:
+        meses_pagados = candidato["meses_pagados"]
+    automatizaciones.append(
+        {
+            "tipo": candidato["tipo"],
+            "categoria": candidato["categoria"],
+            "descripcion": candidato["descripcion"],
+            "monto": candidato["monto"],
+            "dia_mes": candidato["dia_mes"],
+            "activo": not vigencia_meses or meses_pagados < vigencia_meses,
+            "ultimo_confirmado": "",
+            "ticket_ultimo": "",
+            "ultimo_anulado": "",
+            "razon_anulado": "",
+            "vigencia_meses": vigencia_meses,
+            "meses_pagados": meses_pagados,
+            "vigencia_desde": (
+                siguiente_periodo_ciclo(candidato["ultimo_periodo"])
+                if vigencia_meses
+                else ""
+            ),
+        }
+    )
+    escribir_automatizaciones(automatizaciones)
+    return redirect(url_for("automatizacion"))
 
 
 @app.route("/automatizacion/confirmar/<int:automatizacion_id>", methods=["POST"])
