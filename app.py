@@ -1789,22 +1789,14 @@ def movimiento_coincide_anteriores(movimiento, automatizacion):
     return bool(descripcion_coincide or monto_coincide)
 
 
-def estado_vigencia_automatizacion(automatizacion, movimientos, periodo):
+def estado_vigencia_automatizacion(automatizacion, movimientos):
     vigencia = max(int(automatizacion.get("vigencia_meses") or 0), 0)
     meses_base = max(int(automatizacion.get("meses_pagados") or 0), 0)
     desde = automatizacion.get("vigencia_desde", "")
     periodos = periodos_movimiento_automatizacion(automatizacion, movimientos)
     posteriores = [mes for mes in periodos if desde and mes >= desde]
     meses_pagados = meses_base + len(posteriores)
-    vencida = False
-    if vigencia:
-        if meses_base >= vigencia:
-            vencida = periodo not in periodos
-        else:
-            cuotas_restantes = vigencia - meses_base
-            if len(posteriores) >= cuotas_restantes:
-                periodo_ultima_cuota = posteriores[cuotas_restantes - 1]
-                vencida = periodo > periodo_ultima_cuota
+    vencida = bool(vigencia and meses_pagados >= vigencia)
     return meses_pagados, vencida
 
 
@@ -1915,7 +1907,7 @@ def sincronizar_automatizaciones_confirmadas():
             hubo_cambios = True
 
     for item in automatizaciones:
-        meses_pagados, vencida = estado_vigencia_automatizacion(item, movimientos, periodo)
+        meses_pagados, vencida = estado_vigencia_automatizacion(item, movimientos)
         item["meses_pagados_actuales"] = meses_pagados
         item["vigencia_vencida"] = vencida
         if vencida and item.get("activo"):

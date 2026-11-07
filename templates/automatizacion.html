@@ -199,7 +199,7 @@
       {% if vencidas %}
         <section class="panel section-gap">
           <div class="panel-header">
-            <h2>Vigencia finalizada</h2>
+            <h2>Cuotas finalizadas</h2>
             <span class="hint-inline">Archivadas automaticamente; los movimientos historicos se conservan.</span>
           </div>
           <div class="automation-list">
@@ -212,7 +212,7 @@
                   <b>{{ item.monto|moneda }}</b>
                 </div>
                 <div class="automation-actions">
-                  <span class="status">Vigencia finalizada</span>
+                  <span class="status">Cuota finalizada</span>
                   <a class="table-action" href="{{ url_for('editar_automatizacion', automatizacion_id=item.id) }}">Editar</a>
                 </div>
               </div>
@@ -247,7 +247,7 @@
                     <td class="{{ 'saving' if item.tipo == 'Ahorro' else 'negative' }}">{{ item.monto|moneda }}</td>
                     <td>
                       {% if item.vigencia_vencida %}
-                        <span class="status">Vigencia finalizada</span>
+                        <span class="status">Cuota finalizada</span>
                       {% elif item in confirmadas %}
                         <span class="status status-ok">Confirmado</span>
                       {% elif item in anuladas %}
