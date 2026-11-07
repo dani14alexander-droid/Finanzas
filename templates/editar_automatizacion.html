@@ -55,6 +55,17 @@
             <input type="number" name="dia_mes" min="1" max="31" value="{{ item.dia_mes }}" required>
           </label>
 
+          <label>
+            Vigencia en meses (0 = indefinida)
+            <input type="number" name="vigencia_meses" min="0" step="1" value="{{ item.vigencia_meses }}">
+          </label>
+
+          <label>
+            Meses pagados hasta ahora
+            <input type="number" name="meses_pagados" min="0" step="1" value="{{ item.meses_pagados }}">
+          </label>
+          <p class="hint-inline">Al cambiar este valor, el conteo futuro comienza desde el periodo actual. Los movimientos previos se conservan.</p>
+
           <div class="actions">
             <a class="link-button" href="{{ url_for('automatizacion') }}">Cancelar</a>
             <button type="submit">Guardar cambios</button>

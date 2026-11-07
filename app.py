@@ -52,6 +52,9 @@ AUTOMATIZACION_COLUMNAS = [
     "ticket_ultimo",
     "ultimo_anulado",
     "razon_anulado",
+    "vigencia_meses",
+    "meses_pagados",
+    "vigencia_desde",
 ]
 DEUDA_COLUMNAS = [
     "fecha",
@@ -244,10 +247,16 @@ def asegurar_db():
                     ultimo_confirmado TEXT NOT NULL DEFAULT '',
                     ticket_ultimo TEXT NOT NULL DEFAULT '',
                     ultimo_anulado TEXT NOT NULL DEFAULT '',
-                    razon_anulado TEXT NOT NULL DEFAULT ''
+                    razon_anulado TEXT NOT NULL DEFAULT '',
+                    vigencia_meses INTEGER NOT NULL DEFAULT 0,
+                    meses_pagados INTEGER NOT NULL DEFAULT 0,
+                    vigencia_desde TEXT NOT NULL DEFAULT ''
                 )
                 """
             )
+            cursor.execute("ALTER TABLE automatizaciones ADD COLUMN IF NOT EXISTS vigencia_meses INTEGER NOT NULL DEFAULT 0")
+            cursor.execute("ALTER TABLE automatizaciones ADD COLUMN IF NOT EXISTS meses_pagados INTEGER NOT NULL DEFAULT 0")
+            cursor.execute("ALTER TABLE automatizaciones ADD COLUMN IF NOT EXISTS vigencia_desde TEXT NOT NULL DEFAULT ''")
             cursor.execute(
                 """
                 CREATE TABLE IF NOT EXISTS deudas (
@@ -418,6 +427,7 @@ def asegurar_csv():
                 writer.writerows(categorias_guardadas)
     asegurar_columnas_csv(CSV_PATH, COLUMNAS)
     asegurar_columnas_csv(DEUDAS_PATH, DEUDA_COLUMNAS)
+    asegurar_columnas_csv(AUTOMATIZACIONES_PATH, AUTOMATIZACION_COLUMNAS)
 
 
 def leer_movimientos():
@@ -616,7 +626,8 @@ def leer_automatizaciones():
                 cursor.execute(
                     """
                     SELECT tipo, categoria, descripcion, monto, dia_mes, activo,
-                           ultimo_confirmado, ticket_ultimo, ultimo_anulado, razon_anulado
+                           ultimo_confirmado, ticket_ultimo, ultimo_anulado, razon_anulado,
+                           vigencia_meses, meses_pagados, vigencia_desde
                     FROM automatizaciones
                     ORDER BY id
                     """
@@ -626,6 +637,8 @@ def leer_automatizaciones():
                     item = {columna: fila.get(columna) or "" for columna in AUTOMATIZACION_COLUMNAS}
                     item["monto"] = float(item["monto"] or 0)
                     item["dia_mes"] = int(item["dia_mes"] or 1)
+                    item["vigencia_meses"] = int(item["vigencia_meses"] or 0)
+                    item["meses_pagados"] = int(item["meses_pagados"] or 0)
                     item["activo"] = bool(item["activo"])
                     item["id"] = indice
                     automatizaciones.append(item)
@@ -645,6 +658,11 @@ def leer_automatizaciones():
                 item["dia_mes"] = int(item["dia_mes"] or 1)
             except ValueError:
                 item["dia_mes"] = 1
+            for columna in ("vigencia_meses", "meses_pagados"):
+                try:
+                    item[columna] = max(int(item[columna] or 0), 0)
+                except ValueError:
+                    item[columna] = 0
             item["id"] = indice
             item["activo"] = item["activo"] != "No"
             automatizaciones.append(item)
@@ -661,9 +679,10 @@ def escribir_automatizaciones(automatizaciones):
                     """
                     INSERT INTO automatizaciones (
                         tipo, categoria, descripcion, monto, dia_mes, activo,
-                        ultimo_confirmado, ticket_ultimo, ultimo_anulado, razon_anulado
+                        ultimo_confirmado, ticket_ultimo, ultimo_anulado, razon_anulado,
+                        vigencia_meses, meses_pagados, vigencia_desde
                     )
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                     """,
                     [
                         (
@@ -677,6 +696,9 @@ def escribir_automatizaciones(automatizaciones):
                             item.get("ticket_ultimo", ""),
                             item.get("ultimo_anulado", ""),
                             item.get("razon_anulado", ""),
+                            max(int(item.get("vigencia_meses") or 0), 0),
+                            max(int(item.get("meses_pagados") or 0), 0),
+                            item.get("vigencia_desde", ""),
                         )
                         for item in automatizaciones
                     ],
@@ -1740,6 +1762,36 @@ def movimiento_coincide_automatizacion(movimiento, automatizacion):
     )
 
 
+def periodos_movimiento_automatizacion(automatizacion, movimientos):
+    return sorted(
+        {
+            periodo_item_ciclo(movimiento, movimientos)
+            for movimiento in movimientos
+            if movimiento_coincide_automatizacion(movimiento, automatizacion)
+            and periodo_item_ciclo(movimiento, movimientos)
+        }
+    )
+
+
+def estado_vigencia_automatizacion(automatizacion, movimientos, periodo):
+    vigencia = max(int(automatizacion.get("vigencia_meses") or 0), 0)
+    meses_base = max(int(automatizacion.get("meses_pagados") or 0), 0)
+    desde = automatizacion.get("vigencia_desde", "")
+    periodos = periodos_movimiento_automatizacion(automatizacion, movimientos)
+    posteriores = [mes for mes in periodos if desde and mes >= desde]
+    meses_pagados = meses_base + len(posteriores)
+    vencida = False
+    if vigencia:
+        if meses_base >= vigencia:
+            vencida = periodo not in periodos
+        else:
+            cuotas_restantes = vigencia - meses_base
+            if len(posteriores) >= cuotas_restantes:
+                periodo_ultima_cuota = posteriores[cuotas_restantes - 1]
+                vencida = periodo > periodo_ultima_cuota
+    return meses_pagados, vencida
+
+
 def actualizar_automatizaciones_por_movimiento(movimiento, movimientos_actuales):
     periodo = periodo_item_ciclo(movimiento, movimientos_actuales)
     if not periodo:
@@ -1775,6 +1827,19 @@ def sincronizar_automatizaciones_confirmadas():
     inicio_ventana = inicio_periodo - timedelta(days=7)
     hubo_cambios = False
     hubo_cambios_movimientos = False
+
+    for item in automatizaciones:
+        if int(item.get("vigencia_meses") or 0) <= 0 or item.get("vigencia_desde"):
+            continue
+        periodos_previos = [
+            mes for mes in periodos_movimiento_automatizacion(item, movimientos)
+            if mes < periodo
+        ]
+        item["meses_pagados"] = max(
+            int(item.get("meses_pagados") or 0), len(periodos_previos)
+        )
+        item["vigencia_desde"] = periodo
+        hubo_cambios = True
 
     for item in automatizaciones:
         if esta_anulada(item, periodo):
@@ -1816,6 +1881,14 @@ def sincronizar_automatizaciones_confirmadas():
         if not existe_movimiento:
             item["ultimo_confirmado"] = ""
             item["ticket_ultimo"] = ""
+            hubo_cambios = True
+
+    for item in automatizaciones:
+        meses_pagados, vencida = estado_vigencia_automatizacion(item, movimientos, periodo)
+        item["meses_pagados_actuales"] = meses_pagados
+        item["vigencia_vencida"] = vencida
+        if vencida and item.get("activo"):
+            item["activo"] = False
             hubo_cambios = True
 
     if hubo_cambios:
@@ -2881,19 +2954,50 @@ def automatizacion():
             dia_mes = int(request.form.get("dia_mes", 1) or 1)
         except ValueError:
             dia_mes = 1
+        try:
+            vigencia_meses = max(int(request.form.get("vigencia_meses", 0) or 0), 0)
+        except ValueError:
+            vigencia_meses = 0
+        try:
+            meses_pagados = max(int(request.form.get("meses_pagados", 0) or 0), 0)
+        except ValueError:
+            meses_pagados = 0
+        periodo = periodo_actual()
+        movimientos = leer_movimientos()
+        borrador = {
+            "tipo": tipo,
+            "categoria": request.form.get("categoria", "").strip(),
+            "descripcion": request.form.get("descripcion", "").strip(),
+            "monto": float(request.form.get("monto", 0) or 0),
+        }
+        periodos_previos = [
+            mes for mes in periodos_movimiento_automatizacion(borrador, movimientos)
+            if mes < periodo
+        ]
+        periodos_coincidentes = periodos_movimiento_automatizacion(borrador, movimientos)
+        meses_base = max(meses_pagados, len(periodos_previos))
+        vigencia_desde = periodo if vigencia_meses else ""
+        if (
+            vigencia_meses
+            and periodo in periodos_coincidentes
+            and meses_base >= len(periodos_previos) + 1
+        ):
+            anio, mes = [int(parte) for parte in periodo.split("-")]
+            siguiente = sumar_meses(date(anio, mes, 1), 1)
+            vigencia_desde = f"{siguiente.year}-{siguiente.month:02d}"
         automatizaciones = leer_automatizaciones()
         automatizaciones.append(
             {
-                "tipo": tipo,
-                "categoria": request.form.get("categoria", "").strip(),
-                "descripcion": request.form.get("descripcion", "").strip(),
-                "monto": float(request.form.get("monto", 0) or 0),
+                **borrador,
                 "dia_mes": min(max(dia_mes, 1), 31),
                 "activo": True,
                 "ultimo_confirmado": "",
                 "ticket_ultimo": "",
                 "ultimo_anulado": "",
                 "razon_anulado": "",
+                "vigencia_meses": vigencia_meses,
+                "meses_pagados": meses_base,
+                "vigencia_desde": vigencia_desde,
             }
         )
         escribir_automatizaciones(automatizaciones)
@@ -2909,21 +3013,23 @@ def automatizacion():
             item["tipo"].lower(),
         ),
     )
+    vigentes = [item for item in automatizaciones if not item.get("vigencia_vencida")]
+    vencidas = [item for item in automatizaciones if item.get("vigencia_vencida")]
     pendientes = [
         item
-        for item in automatizaciones
+        for item in vigentes
         if item["activo"]
         and item.get("ultimo_confirmado") != periodo
         and not esta_anulada(item, periodo)
     ]
     confirmadas = [
         item
-        for item in automatizaciones
+        for item in vigentes
         if item["activo"] and item.get("ultimo_confirmado") == periodo
     ]
     anuladas = [
         item
-        for item in automatizaciones
+        for item in vigentes
         if item["activo"] and esta_anulada(item, periodo)
     ]
     total_gastos_fijos = sum(
@@ -2950,6 +3056,8 @@ def automatizacion():
     return render_template(
         "automatizacion.html",
         automatizaciones=automatizaciones,
+        vigentes=vigentes,
+        vencidas=vencidas,
         pendientes=pendientes,
         confirmadas=confirmadas,
         anuladas=anuladas,
@@ -3091,7 +3199,7 @@ def descargar_gastos_fijos():
 
 @app.route("/automatizacion/editar/<int:automatizacion_id>", methods=["GET", "POST"])
 def editar_automatizacion(automatizacion_id):
-    automatizaciones = leer_automatizaciones()
+    automatizaciones = sincronizar_automatizaciones_confirmadas()
     if automatizacion_id < 0 or automatizacion_id >= len(automatizaciones):
         return redirect(url_for("automatizacion"))
 
@@ -3104,6 +3212,21 @@ def editar_automatizacion(automatizacion_id):
             dia_mes = int(request.form.get("dia_mes", item["dia_mes"]) or item["dia_mes"])
         except ValueError:
             dia_mes = item["dia_mes"]
+        try:
+            vigencia_meses = max(int(request.form.get("vigencia_meses", 0) or 0), 0)
+        except ValueError:
+            vigencia_meses = max(int(item.get("vigencia_meses") or 0), 0)
+        try:
+            meses_pagados = max(int(request.form.get("meses_pagados", 0) or 0), 0)
+        except ValueError:
+            meses_pagados = max(int(item.get("meses_pagados_actuales") or 0), 0)
+        periodo_inicio_vigencia = periodo_actual()
+        if vigencia_meses:
+            movimientos = leer_movimientos()
+            if periodo_inicio_vigencia in periodos_movimiento_automatizacion(item, movimientos):
+                anio, mes = [int(parte) for parte in periodo_inicio_vigencia.split("-")]
+                siguiente = sumar_meses(date(anio, mes, 1), 1)
+                periodo_inicio_vigencia = f"{siguiente.year}-{siguiente.month:02d}"
         item.update(
             {
                 "tipo": tipo,
@@ -3111,12 +3234,17 @@ def editar_automatizacion(automatizacion_id):
                 "descripcion": request.form.get("descripcion", "").strip(),
                 "monto": float(request.form.get("monto", 0) or 0),
                 "dia_mes": min(max(dia_mes, 1), 31),
+                "vigencia_meses": vigencia_meses,
+                "meses_pagados": meses_pagados,
+                "vigencia_desde": periodo_inicio_vigencia if vigencia_meses else "",
+                "activo": not vigencia_meses or meses_pagados < vigencia_meses,
             }
         )
         automatizaciones[automatizacion_id] = item
         escribir_automatizaciones(automatizaciones)
         return redirect(url_for("automatizacion"))
 
+    item["meses_pagados"] = item.get("meses_pagados_actuales", item.get("meses_pagados", 0))
     return render_template("editar_automatizacion.html", item=item)
 
 

@@ -93,6 +93,17 @@
               <input type="number" name="dia_mes" min="1" max="31" value="1" required>
             </label>
 
+            <label>
+              Vigencia en meses (0 = indefinida)
+              <input type="number" name="vigencia_meses" min="0" step="1" value="0">
+            </label>
+
+            <label>
+              Meses pagados hasta ahora
+              <input type="number" name="meses_pagados" min="0" step="1" value="0">
+            </label>
+            <p class="hint-inline">Los movimientos anteriores coincidentes tambien se cuentan. Deja la vigencia en 0 para un gasto permanente.</p>
+
             <button type="submit">Guardar gasto fijo</button>
           </form>
         </article>
@@ -100,16 +111,17 @@
         <article class="panel">
           <div class="panel-header">
             <h2>Gastos fijos guardados</h2>
-            <span class="kpi-pill">{{ automatizaciones|length }} guardado{{ '' if automatizaciones|length == 1 else 's' }}</span>
+            <span class="kpi-pill">{{ vigentes|length }} vigente{{ '' if vigentes|length == 1 else 's' }}</span>
           </div>
 
-          {% if automatizaciones %}
+          {% if vigentes %}
             <div class="automation-list automation-scroll">
-              {% for item in automatizaciones %}
+              {% for item in vigentes %}
                 {% if item in confirmadas %}
                   <div class="automation-item">
                     <div>
                       <strong>{{ item.descripcion or "Sin descripcion" }}</strong>
+                      {% if item.vigencia_meses %}<span>Pagados: {{ item.meses_pagados_actuales }} de {{ item.vigencia_meses }} meses</span>{% endif %}
                       <span>{{ item.tipo }} · dia {{ item.dia_mes }} · {{ item.categoria or "Sin categoria" }}</span>
                       <b class="{{ 'saving' if item.tipo == 'Ahorro' else 'negative' }}">{{ item.monto|moneda }}</b>
                     </div>
@@ -122,6 +134,7 @@
                   <div class="automation-item">
                     <div>
                       <strong>{{ item.descripcion or "Sin descripcion" }}</strong>
+                      {% if item.vigencia_meses %}<span>Pagados: {{ item.meses_pagados_actuales }} de {{ item.vigencia_meses }} meses</span>{% endif %}
                       <span>{{ item.tipo }} · dia {{ item.dia_mes }} · {{ item.categoria or "Sin categoria" }}</span>
                       <span>Razon: {{ item.razon_anulado }}</span>
                       <b class="{{ 'saving' if item.tipo == 'Ahorro' else 'negative' }}">{{ item.monto|moneda }}</b>
@@ -138,6 +151,7 @@
                   <form class="automation-item" method="post" action="{{ url_for('confirmar_automatizacion', automatizacion_id=item.id) }}">
                     <div>
                       <strong>{{ item.descripcion or "Sin descripcion" }}</strong>
+                      {% if item.vigencia_meses %}<span>Pagados: {{ item.meses_pagados_actuales }} de {{ item.vigencia_meses }} meses</span>{% endif %}
                       <span>{{ item.tipo }} · dia {{ item.dia_mes }} · {{ item.categoria or "Sin categoria" }}</span>
                       <b class="{{ 'saving' if item.tipo == 'Ahorro' else 'negative' }}">{{ item.monto|moneda }}</b>
                     </div>
@@ -177,10 +191,35 @@
               {% endfor %}
             </div>
           {% else %}
-            <p class="empty">No hay gastos fijos guardados.</p>
+            <p class="empty">No hay gastos fijos vigentes.</p>
           {% endif %}
         </article>
       </section>
+
+      {% if vencidas %}
+        <section class="panel section-gap">
+          <div class="panel-header">
+            <h2>Vigencia finalizada</h2>
+            <span class="hint-inline">Archivadas automaticamente; los movimientos historicos se conservan.</span>
+          </div>
+          <div class="automation-list">
+            {% for item in vencidas %}
+              <div class="automation-item">
+                <div>
+                  <strong>{{ item.descripcion or "Sin descripcion" }}</strong>
+                  <span>{{ item.tipo }} - {{ item.categoria or "Sin categoria" }}</span>
+                  <span>Pagados: {{ item.meses_pagados_actuales }} de {{ item.vigencia_meses }} meses</span>
+                  <b>{{ item.monto|moneda }}</b>
+                </div>
+                <div class="automation-actions">
+                  <span class="status">Vigencia finalizada</span>
+                  <a class="table-action" href="{{ url_for('editar_automatizacion', automatizacion_id=item.id) }}">Editar</a>
+                </div>
+              </div>
+            {% endfor %}
+          </div>
+        </section>
+      {% endif %}
 
       <section class="panel section-gap">
         <div class="panel-header">
@@ -207,7 +246,9 @@
                     <td>{{ item.dia_mes }}</td>
                     <td class="{{ 'saving' if item.tipo == 'Ahorro' else 'negative' }}">{{ item.monto|moneda }}</td>
                     <td>
-                      {% if item in confirmadas %}
+                      {% if item.vigencia_vencida %}
+                        <span class="status">Vigencia finalizada</span>
+                      {% elif item in confirmadas %}
                         <span class="status status-ok">Confirmado</span>
                       {% elif item in anuladas %}
                         <span class="status">Anulado: {{ item.razon_anulado }}</span>
