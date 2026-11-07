@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Deudas</title>
     <link rel="manifest" href="{{ url_for('static', filename='manifest.json') }}">
-    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css', v='20261107-1') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css', v='20261107-2') }}">
   </head>
   <body>
     <header class="topbar">
@@ -154,7 +154,7 @@
                       {% if item.modalidad == 'Cuotas' %} · {{ item.cuotas_pagadas }}/{{ item.cuotas_total }} cuotas{% endif %}
                     </span>
                   </div>
-                  <b class="{{ 'positive' if item.tipo == 'Me deben' else 'negative' }}">{{ item.monto|moneda }}</b>
+                  <b class="{{ 'positive' if item.tipo == 'Me deben' else 'negative' }}">{{ item.monto_pagado|moneda }} pagados</b>
                   <form class="debt-delete" method="post" action="{{ url_for('eliminar_deuda', deuda_id=item.id) }}" data-confirm-delete>
                     <button type="submit" class="danger-button">Eliminar</button>
                   </form>

@@ -9,14 +9,20 @@
             {% if item.modalidad == 'Cuotas' %} · cuota {{ item.cuotas_pagadas + 1 }} de {{ item.cuotas_total }}{% endif %}
             {% if item.ticket_gasto_asociado %} · Gasto vinculado{% endif %}
           </span>
-          <b class="{{ 'positive' if item.tipo == 'Me deben' else 'negative' }}">{{ item.monto|moneda }}</b>
+            <b class="{{ 'positive' if item.tipo == 'Me deben' else 'negative' }}">Saldo {{ item.saldo|moneda }}</b>
+            <small class="debt-paid-summary">Abonado {{ item.monto_pagado|moneda }} de {{ item.monto|moneda }}</small>
+            {% if item.modalidad == 'Cuotas' %}<small class="installment-progress">{{ item.cuotas_pagadas }} de {{ item.cuotas_total }} cuotas completas</small>{% endif %}
         </div>
         <form class="debt-payment" method="post" action="{{ url_for('pagar_deuda', deuda_id=item.id) }}">
+          <label>
+            Abono
+            <input type="number" name="monto_pago" min="0.01" max="{{ item.saldo }}" step="0.01" value="{{ item.abono_sugerido }}" required>
+          </label>
           <label>
             Fecha de pago
             <input type="date" name="fecha_pago">
           </label>
-          <button type="submit">{{ 'Pagar cuota' if item.modalidad == 'Cuotas' else 'Marcar pagada' }}</button>
+          <button type="submit">{{ 'Registrar abono' if item.abono_sugerido < item.saldo else 'Pagar saldo' }}</button>
         </form>
         <div class="debt-item-actions">
           <a class="table-action" href="{{ url_for('editar_deuda', deuda_id=item.id) }}">Editar</a>

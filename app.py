@@ -70,6 +70,7 @@ DEUDA_COLUMNAS = [
     "modalidad",
     "cuotas_total",
     "cuotas_pagadas",
+    "monto_pagado",
     "ticket_deuda",
     "ticket_gasto_asociado",
 ]
@@ -121,8 +122,8 @@ CATEGORIAS_PREDEFINIDAS = {
         "Transporte",
     ],
     "Ahorro": ["Ahorro", "Inversión", "Fondo de emergencia", "Balance"],
-    "Me deben": ["Prestamo", "Adelanto", "Compra compartida"],
-    "Debo": ["Prestamo", "Tarjeta", "Adelanto"],
+    "Me deben": ["Cuenta por cobrar", "Adelanto", "Compra compartida"],
+    "Debo": ["Deuda", "Tarjeta", "Adelanto"],
 }
 MESES = [
     "Enero",
@@ -274,6 +275,7 @@ def asegurar_db():
                     modalidad TEXT NOT NULL DEFAULT '',
                     cuotas_total INTEGER NOT NULL DEFAULT 1,
                     cuotas_pagadas INTEGER NOT NULL DEFAULT 0,
+                    monto_pagado DOUBLE PRECISION NOT NULL DEFAULT 0,
                     ticket_deuda TEXT NOT NULL DEFAULT ''
                     ,ticket_gasto_asociado TEXT NOT NULL DEFAULT ''
                 )
@@ -299,6 +301,7 @@ def asegurar_db():
             cursor.execute("ALTER TABLE deudas ADD COLUMN IF NOT EXISTS modalidad TEXT NOT NULL DEFAULT ''")
             cursor.execute("ALTER TABLE deudas ADD COLUMN IF NOT EXISTS cuotas_total INTEGER NOT NULL DEFAULT 1")
             cursor.execute("ALTER TABLE deudas ADD COLUMN IF NOT EXISTS cuotas_pagadas INTEGER NOT NULL DEFAULT 0")
+            cursor.execute("ALTER TABLE deudas ADD COLUMN IF NOT EXISTS monto_pagado DOUBLE PRECISION NOT NULL DEFAULT 0")
             cursor.execute("ALTER TABLE deudas ADD COLUMN IF NOT EXISTS ticket_deuda TEXT NOT NULL DEFAULT ''")
             cursor.execute("ALTER TABLE deudas ADD COLUMN IF NOT EXISTS ticket_gasto_asociado TEXT NOT NULL DEFAULT ''")
             cursor.execute(
@@ -725,7 +728,7 @@ def leer_deudas():
                 cursor.execute(
                     """
                     SELECT fecha, tipo, persona, categoria, descripcion, monto, estado, fecha_pago,
-                           modalidad, cuotas_total, cuotas_pagadas, ticket_deuda, ticket_gasto_asociado
+                           modalidad, cuotas_total, cuotas_pagadas, monto_pagado, ticket_deuda, ticket_gasto_asociado
                     FROM deudas
                     ORDER BY id
                     """
@@ -736,6 +739,13 @@ def leer_deudas():
                     item["monto"] = float(item["monto"] or 0)
                     item["cuotas_total"] = int(item["cuotas_total"] or 1)
                     item["cuotas_pagadas"] = int(item["cuotas_pagadas"] or 0)
+                    item["monto_pagado"] = float(item["monto_pagado"] or 0)
+                    if item["monto_pagado"] == 0 and item["estado"] == "Pagada":
+                        item["monto_pagado"] = item["monto"]
+                    elif item["monto_pagado"] == 0 and item["modalidad"] == "Cuotas":
+                        item["monto_pagado"] = monto_cuota(item) * item["cuotas_pagadas"]
+                    if item["categoria"].strip().lower() == "prestamo":
+                        item["categoria"] = "Cuenta por cobrar" if item["tipo"] == "Me deben" else "Deuda"
                     item["id"] = indice
                     deudas.append(item)
                 return deudas
@@ -759,6 +769,16 @@ def leer_deudas():
                 item["cuotas_pagadas"] = max(int(item.get("cuotas_pagadas") or 0), 0)
             except ValueError:
                 item["cuotas_pagadas"] = 0
+            try:
+                item["monto_pagado"] = max(float(item.get("monto_pagado") or 0), 0)
+            except ValueError:
+                item["monto_pagado"] = 0
+            if item["monto_pagado"] == 0 and item.get("estado") == "Pagada":
+                item["monto_pagado"] = item["monto"]
+            elif item["monto_pagado"] == 0 and item.get("modalidad") == "Cuotas":
+                item["monto_pagado"] = monto_cuota(item) * item["cuotas_pagadas"]
+            if (item.get("categoria") or "").strip().lower() == "prestamo":
+                item["categoria"] = "Cuenta por cobrar" if item["tipo"] == "Me deben" else "Deuda"
             deudas.append(item)
     return deudas
 
@@ -863,9 +883,9 @@ def escribir_deudas(deudas):
                     """
                     INSERT INTO deudas (
                         fecha, tipo, persona, categoria, descripcion, monto, estado, fecha_pago,
-                        modalidad, cuotas_total, cuotas_pagadas, ticket_deuda, ticket_gasto_asociado
+                        modalidad, cuotas_total, cuotas_pagadas, monto_pagado, ticket_deuda, ticket_gasto_asociado
                     )
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                     """,
                     [
                         (
@@ -880,6 +900,7 @@ def escribir_deudas(deudas):
                             item.get("modalidad", ""),
                             int(item.get("cuotas_total") or 1),
                             int(item.get("cuotas_pagadas") or 0),
+                            float(item.get("monto_pagado") or 0),
                             item.get("ticket_deuda", ""),
                             item.get("ticket_gasto_asociado", ""),
                         )
@@ -1221,11 +1242,7 @@ def descuentos_compras_compartidas(deudas):
     for deuda in deudas:
         if not es_compra_compartida(deuda):
             continue
-        monto_pagado = 0
-        if deuda.get("estado") == "Pagada":
-            monto_pagado = float(deuda.get("monto") or 0)
-        elif deuda.get("modalidad") == "Cuotas":
-            monto_pagado = monto_cuota(deuda) * int(deuda.get("cuotas_pagadas") or 0)
+        monto_pagado = float(deuda.get("monto_pagado") or 0)
         ticket = deuda.get("ticket_gasto_asociado")
         descuentos[ticket] = descuentos.get(ticket, 0) + monto_pagado
     return descuentos
@@ -2558,6 +2575,60 @@ def datos_gastos_variables(datos_dashboard, vista="diaria"):
     }
 
 
+def recomendaciones_dashboard(datos, variables):
+    recomendaciones = []
+    if datos["ingresos"] > 0:
+        tasa_ahorro = datos["ahorros"] / datos["ingresos"] * 100
+        recomendaciones.append({
+            "tono": "warning" if tasa_ahorro < 10 else "good",
+            "titulo": "Refuerza tu ahorro" if tasa_ahorro < 10 else "Buen ritmo de ahorro",
+            "texto": (
+                f"Llevas un {tasa_ahorro:.0f}% de tus ingresos en ahorros. Si tu presupuesto lo permite, fija una transferencia peque\u00f1a al inicio del ciclo."
+                if tasa_ahorro < 10
+                else "Ya est\u00e1s destinando una parte de tus ingresos al ahorro. Mant\u00e9n ese monto dentro de tu presupuesto del ciclo."
+            ),
+            "dato": f"Meta orientativa: 10% \u00b7 actual {tasa_ahorro:.0f}%",
+        })
+    if variables["meta_diaria"] > 0 and variables["dias_transcurridos"] > 0:
+        diferencia = variables["gasto_promedio"] - variables["meta_diaria"]
+        recomendaciones.append({
+            "tono": "warning" if diferencia > 0 else "good",
+            "titulo": "Gasto diario sobre la meta" if diferencia > 0 else "Gasto diario dentro de la meta",
+            "texto": (
+                f"Tu promedio diario supera la meta en {moneda(diferencia)}. Considera bajar el gasto variable durante los pr\u00f3ximos d\u00edas."
+                if diferencia > 0
+                else "Tu promedio diario se mantiene dentro del margen calculado despu\u00e9s de los compromisos mensuales."
+            ),
+            "dato": "Revisa los d\u00edas y categor\u00edas con mayor gasto." if diferencia > 0 else f"Promedio {moneda(variables['gasto_promedio'])} \u00b7 meta {moneda(variables['meta_diaria'])}",
+        })
+    categorias_gasto = {}
+    for movimiento in datos["gastos_lista"]:
+        categoria = movimiento.get("categoria") or "Sin categor\u00eda"
+        categorias_gasto[categoria] = categorias_gasto.get(categoria, 0) + float(movimiento.get("monto") or 0)
+    if categorias_gasto:
+        categoria, monto_categoria = max(categorias_gasto.items(), key=lambda par: par[1])
+        total_gastos = sum(categorias_gasto.values())
+        proporcion = monto_categoria / total_gastos * 100 if total_gastos else 0
+        recomendaciones.append({
+            "tono": "neutral", "titulo": f"Mayor categor\u00eda: {categoria}",
+            "texto": "Es la categor\u00eda con m\u00e1s gasto registrado en el ciclo. Comp\u00e1rala con tu presupuesto y revisa sus movimientos recientes.",
+            "dato": f"{moneda(monto_categoria)} \u00b7 {proporcion:.0f}% de los gastos",
+        })
+    if datos["disponible"] < 0:
+        recomendaciones.append({
+            "tono": "danger", "titulo": "El ciclo va en d\u00e9ficit",
+            "texto": "Los gastos y ahorros registrados superan los ingresos del periodo. Revisa primero los gastos variables y compromisos pr\u00f3ximos.",
+            "dato": f"Diferencia {moneda(datos['disponible'])}",
+        })
+    elif datos["cuota_semanal"] >= 0:
+        recomendaciones.append({
+            "tono": "neutral", "titulo": "L\u00edmite semanal sugerido",
+            "texto": "Usa este monto como referencia para mantener el saldo disponible hasta el pr\u00f3ximo ciclo.",
+            "dato": f"{moneda(datos['cuota_semanal'])} por semana",
+        })
+    return recomendaciones[:3]
+
+
 def calcular_planificacion():
     datos = calcular_dashboard(filtrar_periodo=True)
     periodo_inicio = datos["periodo_inicio"]
@@ -2672,7 +2743,8 @@ def calcular_planificacion():
 def index():
     datos = calcular_dashboard(filtrar_periodo=True)
     variables = datos_gastos_variables(datos, request.args.get("gastos_vista", "diaria"))
-    return render_template("index.html", **datos, gastos_variables=variables)
+    recomendaciones = recomendaciones_dashboard(datos, variables)
+    return render_template("index.html", **datos, gastos_variables=variables, recomendaciones=recomendaciones)
 
 
 @app.route("/planificacion", methods=["GET", "POST"])
@@ -3464,22 +3536,27 @@ def deudas():
         tipo = request.form.get("tipo", "Me deben")
         if tipo not in TIPOS_DEUDA:
             tipo = "Me deben"
+        categoria = request.form.get("categoria", "").strip()
+        if categoria.lower() in {"prestamo", "préstamo", "prestamo recibido", "préstamo recibido"}:
+            categoria = "Cuenta por cobrar" if tipo == "Me deben" else "Deuda"
         modalidad = request.form.get("modalidad", "Simple") if tipo == "Debo" else "Simple"
         if modalidad not in {"Simple", "Cuotas", "Prestamo"}:
             modalidad = "Simple"
+        if tipo == "Debo" and modalidad == "Prestamo":
+            categoria = "Deuda"
         try:
             cuotas_total = max(int(request.form.get("cuotas_total", 1) or 1), 1)
         except ValueError:
             cuotas_total = 1
         ticket_deuda = uuid.uuid4().hex
         ticket_gasto_asociado = ""
-        if tipo == "Me deben" and request.form.get("categoria", "").strip().lower() == "compra compartida":
+        if tipo == "Me deben" and categoria.lower() == "compra compartida":
             ticket_gasto_asociado = ticket_gasto_por_indice(request.form.get("gasto_asociado_id"))
         item = {
             "fecha": request.form.get("fecha", ""),
             "tipo": tipo,
             "persona": request.form.get("persona", "").strip(),
-            "categoria": request.form.get("categoria", "").strip(),
+            "categoria": categoria,
             "descripcion": request.form.get("descripcion", "").strip(),
             "monto": float(request.form.get("monto", 0) or 0),
             "estado": "Pendiente",
@@ -3487,6 +3564,7 @@ def deudas():
             "modalidad": modalidad,
             "cuotas_total": cuotas_total if modalidad == "Cuotas" else 1,
             "cuotas_pagadas": 0,
+            "monto_pagado": 0,
             "ticket_deuda": ticket_deuda,
             "ticket_gasto_asociado": ticket_gasto_asociado,
         }
@@ -3513,12 +3591,19 @@ def deudas():
         return redirect(url_for("deudas"))
 
     deudas_lista = leer_deudas()
+    for item in deudas_lista:
+        item["saldo"] = max(round(float(item.get("monto") or 0) - float(item.get("monto_pagado") or 0), 2), 0)
+        item["abono_sugerido"] = (
+            round(max(monto_cuota(item) - (float(item.get("monto_pagado") or 0) % monto_cuota(item)), 0), 2)
+            if item.get("modalidad") == "Cuotas" and monto_cuota(item) > 0
+            else item["saldo"]
+        )
     pendientes = [item for item in deudas_lista if item["estado"] != "Pagada"]
     pagadas = [item for item in deudas_lista if item["estado"] == "Pagada"]
     me_deben = [item for item in pendientes if item["tipo"] == "Me deben"]
     debo = [item for item in pendientes if item["tipo"] == "Debo"]
-    total_me_deben = sum(item["monto"] for item in me_deben)
-    total_debo = sum(item["monto"] for item in debo)
+    total_me_deben = sum(item["saldo"] for item in me_deben)
+    total_debo = sum(item["saldo"] for item in debo)
     return render_template(
         "deudas.html",
         deudas=deudas_lista,
@@ -3542,36 +3627,31 @@ def pagar_deuda(deuda_id):
     item = deudas_lista[deuda_id]
     if item["estado"] != "Pagada":
         fecha_pago = request.form.get("fecha_pago") or fecha_hoy_chile().isoformat()
-        movimientos = leer_movimientos()
-        mismo_ciclo = not pago_deuda_genera_movimiento(item, fecha_pago, movimientos)
-        if es_compra_compartida(item):
-            eliminar_movimientos_deuda(item.get("ticket_deuda", ""), "origen")
-        elif mismo_ciclo:
-            eliminar_movimientos_deuda(item.get("ticket_deuda", ""), "origen")
-        else:
+        saldo_actual = max(float(item.get("monto") or 0) - float(item.get("monto_pagado") or 0), 0)
+        try:
+            abono = float(request.form.get("monto_pago") or saldo_actual)
+        except ValueError:
+            abono = 0
+        if abono <= 0 or abono > saldo_actual + 0.009:
+            return redirect(url_for("deudas"))
+        abono = round(min(abono, saldo_actual), 2)
+        if not es_compra_compartida(item):
             tipo_movimiento = "Ingreso" if item["tipo"] == "Me deben" else "Gasto"
-            monto_pago = monto_cuota(item) if item.get("modalidad") == "Cuotas" else item["monto"]
             guardar_movimiento(
                 {
                     "fecha": fecha_pago,
                     "tipo": tipo_movimiento,
                     "categoria": item["categoria"] or "Deudas",
                     "descripcion": f"{item['tipo']} - {item['persona']} | {item['descripcion']}",
-                    "monto": monto_pago,
+                    "monto": abono,
                     "ticket_deuda": item.get("ticket_deuda", ""),
                     "origen_deuda": "pago",
                 }
             )
+        item["monto_pagado"] = round(float(item.get("monto_pagado") or 0) + abono, 2)
+        item["estado"] = "Pagada" if item["monto_pagado"] >= float(item.get("monto") or 0) - 0.009 else "Pendiente"
         if item.get("modalidad") == "Cuotas":
-            item["cuotas_pagadas"] = min(
-                int(item.get("cuotas_pagadas") or 0) + 1,
-                int(item.get("cuotas_total") or 1),
-            )
-            item["estado"] = (
-                "Pagada" if item["cuotas_pagadas"] >= item["cuotas_total"] else "Pendiente"
-            )
-        else:
-            item["estado"] = "Pagada"
+            item["cuotas_pagadas"] = min(int(item["monto_pagado"] / max(monto_cuota(item), 0.01)), int(item.get("cuotas_total") or 1))
         item["fecha_pago"] = fecha_pago
         deudas_lista[deuda_id] = item
         escribir_deudas(deudas_lista)
@@ -3589,9 +3669,14 @@ def editar_deuda(deuda_id):
         tipo = request.form.get("tipo", item["tipo"])
         if tipo not in TIPOS_DEUDA:
             tipo = item["tipo"]
+        categoria = request.form.get("categoria", "").strip()
+        if categoria.lower() in {"prestamo", "préstamo", "prestamo recibido", "préstamo recibido"}:
+            categoria = "Cuenta por cobrar" if tipo == "Me deben" else "Deuda"
         modalidad = request.form.get("modalidad", "Simple") if tipo == "Debo" else "Simple"
         if modalidad not in {"Simple", "Cuotas", "Prestamo"}:
             modalidad = "Simple"
+        if tipo == "Debo" and modalidad == "Prestamo":
+            categoria = "Deuda"
         try:
             cuotas_total = max(int(request.form.get("cuotas_total", 1) or 1), 1)
         except ValueError:
@@ -3607,7 +3692,7 @@ def editar_deuda(deuda_id):
                 "fecha": request.form.get("fecha", item["fecha"]),
                 "tipo": tipo,
                 "persona": request.form.get("persona", "").strip(),
-                "categoria": request.form.get("categoria", "").strip(),
+                "categoria": categoria,
                 "descripcion": request.form.get("descripcion", "").strip(),
                 "monto": float(request.form.get("monto", 0) or 0),
                 "modalidad": modalidad,
@@ -3620,6 +3705,10 @@ def editar_deuda(deuda_id):
                 ),
             }
         )
+        item["monto_pagado"] = min(float(item.get("monto_pagado") or 0), float(item["monto"]))
+        item["estado"] = "Pagada" if item["monto_pagado"] >= float(item["monto"]) - 0.009 else "Pendiente"
+        if item.get("modalidad") == "Cuotas" and float(item["monto"]) > 0:
+            item["cuotas_pagadas"] = min(int(item["monto_pagado"] / monto_cuota(item)), cuotas_total)
         deudas_lista[deuda_id] = item
         escribir_deudas(deudas_lista)
 
