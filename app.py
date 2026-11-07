@@ -1773,6 +1773,22 @@ def periodos_movimiento_automatizacion(automatizacion, movimientos):
     )
 
 
+def movimiento_coincide_anteriores(movimiento, automatizacion):
+    if (
+        movimiento.get("tipo") != automatizacion.get("tipo")
+        or not mismo_texto(movimiento.get("categoria"), automatizacion.get("categoria"))
+    ):
+        return False
+    descripcion = automatizacion.get("descripcion", "").strip()
+    descripcion_coincide = descripcion and mismo_texto(
+        movimiento.get("descripcion"), descripcion
+    )
+    monto_coincide = abs(
+        float(movimiento.get("monto") or 0) - float(automatizacion.get("monto") or 0)
+    ) < 0.01
+    return bool(descripcion_coincide or monto_coincide)
+
+
 def estado_vigencia_automatizacion(automatizacion, movimientos, periodo):
     vigencia = max(int(automatizacion.get("vigencia_meses") or 0), 0)
     meses_base = max(int(automatizacion.get("meses_pagados") or 0), 0)
@@ -3251,8 +3267,32 @@ def editar_automatizacion(automatizacion_id):
                 "activo": not vigencia_meses or meses_pagados < vigencia_meses,
             }
         )
+        if request.form.get("accion") == "considerar_anteriores":
+            movimientos = leer_movimientos()
+            periodos_anteriores = sorted(
+                {
+                    periodo_item_ciclo(movimiento, movimientos)
+                    for movimiento in movimientos
+                    if movimiento_coincide_anteriores(movimiento, item)
+                    and periodo_item_ciclo(movimiento, movimientos)
+                }
+            )
+            item["meses_pagados"] = max(meses_pagados, len(periodos_anteriores))
+            if vigencia_meses and periodos_anteriores:
+                item["vigencia_desde"] = siguiente_periodo_ciclo(periodos_anteriores[-1])
+            elif vigencia_meses:
+                item["vigencia_desde"] = periodo_actual()
+            item["activo"] = (
+                not vigencia_meses
+                or item["meses_pagados"] < vigencia_meses
+                or periodo_actual() in periodos_anteriores
+            )
         automatizaciones[automatizacion_id] = item
         escribir_automatizaciones(automatizaciones)
+        if request.form.get("accion") == "considerar_anteriores":
+            return redirect(
+                url_for("editar_automatizacion", automatizacion_id=automatizacion_id)
+            )
         return redirect(url_for("automatizacion"))
 
     item["meses_pagados"] = item.get("meses_pagados_actuales", item.get("meses_pagados", 0))
@@ -3263,7 +3303,7 @@ def editar_automatizacion(automatizacion_id):
             "periodo_registro": periodo_item_ciclo(movimiento, movimientos),
         }
         for movimiento in movimientos
-        if movimiento_coincide_automatizacion(movimiento, item)
+        if movimiento_coincide_anteriores(movimiento, item)
     ]
     registros.sort(key=lambda movimiento: movimiento.get("fecha", ""), reverse=True)
     periodos_registrados = {registro["periodo_registro"] for registro in registros}

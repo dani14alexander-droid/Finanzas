@@ -28,6 +28,7 @@
         <div class="panel section-gap">
           <h2>Movimientos registrados</h2>
           <p><strong>{{ cantidad_registros }}</strong> registro{{ '' if cantidad_registros == 1 else 's' }} en <strong>{{ cantidad_periodos }}</strong> ciclo{{ '' if cantidad_periodos == 1 else 's' }}.</p>
+          <p class="hint-inline">"Considerar anteriores" cuenta una cuota por ciclo y reconoce la misma descripcion aunque haya cambiado el monto.</p>
           {% if registros %}
             <div class="table-wrap">
               <table>
@@ -98,6 +99,7 @@
 
           <div class="actions">
             <a class="link-button" href="{{ url_for('automatizacion') }}">Cancelar</a>
+            <button type="submit" name="accion" value="considerar_anteriores">Considerar anteriores</button>
             <button type="submit">Guardar cambios</button>
           </div>
         </form>
