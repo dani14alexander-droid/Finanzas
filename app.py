@@ -3599,7 +3599,11 @@ def deudas():
             else item["saldo"]
         )
     pendientes = [item for item in deudas_lista if item["estado"] != "Pagada"]
-    pagadas = [item for item in deudas_lista if item["estado"] == "Pagada"]
+    pagadas = sorted(
+        (item for item in deudas_lista if item["estado"] == "Pagada"),
+        key=lambda item: (item.get("fecha_pago") or item.get("fecha") or "", item["id"]),
+        reverse=True,
+    )
     me_deben = [item for item in pendientes if item["tipo"] == "Me deben"]
     debo = [item for item in pendientes if item["tipo"] == "Debo"]
     total_me_deben = sum(item["saldo"] for item in me_deben)
