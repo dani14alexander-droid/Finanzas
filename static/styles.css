@@ -2377,6 +2377,7 @@ input:focus, select:focus { border-color: #4584eb; outline-color: #a7c8ff; }
 .goal-track { background: #e2eaf8; }
 .goal-track i { background: #245cc6; }
 .variable-stock-card { border: 0; border-radius: 10px; min-height: 98px; overflow: hidden; padding: 16px 19px; position: relative; }
+.variable-stock-card strong { line-height: 1.15; min-width: 0; overflow-wrap: anywhere; }
 .variable-stock-card.upperstock { background: linear-gradient(120deg, #174d9f, #163c80); }
 .variable-stock-card.understock { background: linear-gradient(120deg, #8756d1, #48318b); }
 .variable-stock-card:has(.stock-icon) { padding-left: 75px; }
@@ -2411,6 +2412,10 @@ input:focus, select:focus { border-color: #4584eb; outline-color: #a7c8ff; }
 .metric-icon-income { background: #e1f6ed; color: #00844a; }
 .metric-icon-expense { background: #fbe5e9; color: #d62c42; }
 .metric-icon-saving { background: #eee6ff; color: #6324b8; }
+.metric-card .metric-icon-balance, .metric-card .metric-icon-weekly { color: #154bac; }
+.metric-card .metric-icon-income { color: #00844a; }
+.metric-card .metric-icon-expense { color: #d62c42; }
+.metric-card .metric-icon-saving { color: #6324b8; }
 .insights-panel, .quick-panel, .finance-spending-panel, .finance-activity > .panel { background: #f9fbff; border-radius: 13px; box-shadow: 0 2px 3px rgba(22, 51, 101, .14); }
 .section-title { align-items: center; display: flex; gap: 13px; min-width: 0; }
 .section-icon { background: linear-gradient(145deg, #16499b, #102d69); border-radius: 8px; color: #fff; height: 43px; padding: 9px; width: 43px; }
@@ -2465,6 +2470,14 @@ input:focus, select:focus { border-color: #4584eb; outline-color: #a7c8ff; }
   .finance-hero h1 { font-size: 1.8rem; }
   .hero-actions { align-items: flex-start; justify-items: start; }
   .finance-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .finance-metrics > .metric-card:last-child:nth-child(even) {
+    align-items: center;
+    column-gap: 12px;
+    display: grid;
+    grid-column: 1 / -1;
+    grid-template-columns: 38px minmax(0, 1fr);
+  }
+  .finance-metrics > .metric-card:last-child:nth-child(even) .metric-icon { grid-row: 1 / span 3; margin: 0; }
   .receivables-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .metric-balance { grid-column: 1 / -1; }
   .metric-card { padding: 13px; }
@@ -2473,4 +2486,9 @@ input:focus, select:focus { border-color: #4584eb; outline-color: #a7c8ff; }
   .section-heading { flex-wrap: wrap; }
   .quick-panel h2 { font-size: 1.1rem; }
   .finance-activity .panel-header { align-items: center; flex-direction: row; }
+}
+
+@media (max-width: 540px) {
+  .variable-expenses-stats { grid-template-columns: minmax(0, 1fr); }
+  .variable-stock-card { min-height: 0; }
 }
