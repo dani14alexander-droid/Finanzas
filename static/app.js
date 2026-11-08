@@ -394,6 +394,7 @@ document.querySelectorAll("[data-debt-form]").forEach((form) => {
 document.querySelectorAll(".chart-canvas-wrap canvas, .pie-chart canvas").forEach((canvas) => {
   const wrap = canvas.closest(".chart-canvas-wrap, .pie-chart");
   if (!wrap) return;
+  const debtDetail = canvas.id === "deudasPersonaChart" ? document.getElementById("deudas-chart-detail") : null;
   wrap.classList.add("chart-expandable");
   const button = document.createElement("button");
   button.type = "button";
@@ -404,6 +405,10 @@ document.querySelectorAll(".chart-canvas-wrap canvas, .pie-chart canvas").forEac
   button.setAttribute("aria-pressed", "false");
   const toggleChart = (expanded) => {
     wrap.classList.toggle("chart-expanded", expanded);
+    if (debtDetail) {
+      if (expanded) wrap.append(debtDetail);
+      else wrap.after(debtDetail);
+    }
     const label = expanded ? "Cerrar gráfico ampliado" : "Ampliar gráfico";
     button.setAttribute("aria-label", label);
     button.title = label;
@@ -423,6 +428,9 @@ document.querySelectorAll(".chart-canvas-wrap canvas, .pie-chart canvas").forEac
   button.addEventListener("click", () => toggleChart(!wrap.classList.contains("chart-expanded")));
   button.addEventListener("keydown", (event) => {
     if (event.key === "Escape" && wrap.classList.contains("chart-expanded")) toggleChart(false);
+  });
+  window.addEventListener("resize", () => {
+    if (window.innerWidth > 720 && wrap.classList.contains("chart-expanded")) toggleChart(false);
   });
   wrap.append(button);
 });
@@ -800,6 +808,35 @@ const buildDebtsByPerson = () => {
   const canvas = document.getElementById("deudasPersonaChart");
   const data = readChartData("deudas-persona-data");
   if (!canvas || !data || !window.Chart) return;
+  const detailPanel = document.getElementById("deudas-chart-detail");
+  const escapeHtml = (value) => String(value ?? "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#039;");
+  const showDetail = (datasetIndex, index) => {
+    if (!detailPanel) return;
+    const side = datasetIndex === 0 ? "me_deben" : "debo";
+    const items = data[`detalles_${side}`]?.[index] || [];
+    if (!items.length) return;
+    const type = datasetIndex === 0 ? "Me deben" : "Debo";
+    const amountLabel = data.modo === "historico" ? "Monto original" : "Saldo pendiente";
+    detailPanel.innerHTML = `
+      <div class="debt-chart-detail-head">
+        <div><span>${type} · ${escapeHtml(data.labels[index])}</span><h3>${amountLabel}: ${moneyFormatter.format(Number(data[side][index] || 0))}</h3></div>
+        <button type="button" class="debt-chart-detail-close" aria-label="Cerrar detalle">×</button>
+      </div>
+      <ul>${items.map((item) => `
+        <li>
+          <div><strong>${escapeHtml(item.descripcion)}</strong><span>${escapeHtml(item.fecha)} · ${escapeHtml(item.categoria)} · ${escapeHtml(item.estado)}</span></div>
+          <div class="debt-chart-detail-amount"><b>${moneyFormatter.format(Number(item.monto || 0))}</b><small>Original ${moneyFormatter.format(Number(item.monto_original || 0))} · Abonado ${moneyFormatter.format(Number(item.abonado || 0))} · Saldo ${moneyFormatter.format(Number(item.saldo || 0))}</small></div>
+        </li>`).join("")}</ul>
+    `;
+    detailPanel.hidden = false;
+    detailPanel.querySelector("button").addEventListener("click", () => { detailPanel.hidden = true; });
+    if (!canvas.closest(".chart-expanded")) detailPanel.scrollIntoView({ behavior: "smooth", block: "nearest" });
+  };
   new Chart(canvas, {
     type: "bar",
     data: {
@@ -811,6 +848,9 @@ const buildDebtsByPerson = () => {
     },
     options: {
       maintainAspectRatio: false,
+      onClick: (_event, elements) => {
+        if (elements.length) showDetail(elements[0].datasetIndex, elements[0].index);
+      },
       responsive: true,
       plugins: {
         tooltip: { callbacks: { label: (context) => `${context.dataset.label}: ${moneyFormatter.format(Number(context.raw || 0))}` } },

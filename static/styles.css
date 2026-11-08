@@ -988,6 +988,25 @@ th {
   width: 100% !important;
 }
 
+.debt-chart-detail {
+  background: #fff;
+  border: 1px solid #d5e1f2;
+  border-radius: 10px;
+  margin: 12px 0;
+  padding: 14px;
+}
+
+.debt-chart-detail-head { align-items: flex-start; display: flex; gap: 12px; justify-content: space-between; }
+.debt-chart-detail-head span, .debt-chart-detail li span, .debt-chart-detail li small { color: var(--muted); }
+.debt-chart-detail-head h3 { font-size: 1rem; margin: 4px 0 0; }
+button.debt-chart-detail-close { flex: 0 0 32px; min-height: 32px; padding: 2px; width: 32px; }
+.debt-chart-detail ul { list-style: none; margin: 12px 0 0; padding: 0; }
+.debt-chart-detail li { border-top: 1px solid var(--line); display: grid; gap: 12px; grid-template-columns: minmax(0, 1fr) auto; padding: 10px 0; }
+.debt-chart-detail li:last-child { padding-bottom: 0; }
+.debt-chart-detail li strong, .debt-chart-detail li span, .debt-chart-detail li b, .debt-chart-detail li small { display: block; }
+.debt-chart-detail li span, .debt-chart-detail li small { font-size: 0.82rem; margin-top: 3px; }
+.debt-chart-detail-amount { text-align: right; }
+
 .chart-expand-button { display: none; }
 
 [data-loan-savings] > span {
@@ -1049,6 +1068,19 @@ th {
     height: calc(100vw - 48px) !important;
     width: calc(100vh - 16px) !important;
     width: calc(100dvh - 16px) !important;
+  }
+  .debt-chart-detail li { grid-template-columns: minmax(0, 1fr); }
+  .debt-chart-detail-amount { text-align: left; }
+  .chart-canvas-wrap.chart-expanded .debt-chart-detail {
+    bottom: 8px;
+    box-shadow: 0 8px 24px rgba(10, 25, 59, 0.18);
+    left: 8px;
+    margin: 0;
+    max-height: 44%;
+    overflow: auto;
+    position: absolute;
+    right: 8px;
+    z-index: 3;
   }
   .pie-chart.chart-expanded {
     align-items: center;

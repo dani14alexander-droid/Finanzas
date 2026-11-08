@@ -12,7 +12,7 @@ Esta aplicación registra ingresos, gastos, ahorros y deudas en pesos chilenos. 
 | Macrocategorías | Administrar categorías y asignar categorías de gasto o ahorro a las macrocategorías de planificación. |
 | Gastos fijos | Crear y administrar registros recurrentes, confirmarlos o anularlos por periodo, separarlos en partes y consultar su historial. |
 | Histórico | Filtrar por fecha y tipo; ver ingresos, gastos, ahorros, dinero disponible y deudas en vistas diaria, semanal o mensual. Los registros futuros se excluyen del histórico. |
-| Deudas | Registrar lo que te deben y lo que debes, compras en cuotas, préstamos recibidos, compras compartidas, abonos parciales e historial de pagos. El gráfico por persona permite ver saldos pendientes o montos originales. |
+| Deudas | Registrar lo que te deben y lo que debes, compras en cuotas, préstamos recibidos, compras compartidas, abonos parciales e historial de pagos. El gráfico por persona permite ver saldos pendientes o montos originales y, al seleccionar una barra, las deudas que forman su total. |
 
 En móvil, los gráficos del Panel, Resumen, Histórico y Deudas tienen un control para abrir una vista horizontal ampliada. Los formularios de movimientos y deudas rechazan fechas posteriores a la fecha actual de Chile.
 
@@ -62,6 +62,8 @@ La sección de gastos fijos considera las automatizaciones que cuentan en el per
 ## Deudas y préstamos
 
 Una deuda pendiente conserva `saldo = máximo(monto original − abonos registrados, 0)`. En **Deudas**, «Me deben» suma los saldos a favor, «Debo» suma los saldos por pagar y el balance neto es `Me deben − Debo`. El gráfico en modo **Pendientes** usa esos saldos; en modo **Histórico** usa los montos originales de las deudas filtradas.
+
+Al tocar o hacer clic en una barra, el detalle muestra cada deuda que compone ese valor, con fecha, categoría, descripción, monto original, total abonado y saldo. En la vista normal aparece bajo el gráfico; en la vista horizontal ampliada aparece dentro de ella.
 
 Un préstamo otorgado crea una cuenta por cobrar. Cada cobro parcial disminuye el saldo pendiente. Una compra compartida puede asociarse a un gasto: sus abonos reducen el monto efectivo de ese gasto. Una deuda en cuotas distribuye el monto original entre el número de cuotas; los abonos actualizan el saldo y las cuotas pagadas. Un préstamo recibido se registra como ingreso de origen y sus pagos como gastos.
 

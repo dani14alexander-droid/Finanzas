@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Deudas</title>
     <link rel="manifest" href="{{ url_for('static', filename='manifest.json') }}">
-    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css', v='20261108-11') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css', v='20261108-12') }}">
   </head>
   <body>
     {% include "_navigation.html" %}
@@ -135,7 +135,7 @@
         <div class="panel-header">
           <div><p class="eyebrow">Análisis de deudas</p><h2>Deudas por persona</h2></div>
         </div>
-        <p class="hint-inline">{% if g_modo == 'historico' %}Montos originales de todas las deudas registradas en el periodo, incluso si ya fueron pagadas.{% else %}Saldo pendiente actual de las deudas registradas en el periodo elegido.{% endif %}</p>
+        <p class="hint-inline">{% if g_modo == 'historico' %}Montos originales de todas las deudas registradas en el periodo, incluso si ya fueron pagadas.{% else %}Saldo pendiente actual de las deudas registradas en el periodo elegido.{% endif %} Selecciona una barra para ver las deudas que forman su monto.</p>
         <form method="get" class="period-filter">
           {% if historial_abierto %}<input type="hidden" name="historial" value="1">{% endif %}
           <input type="hidden" name="h_persona" value="{{ h_persona }}"><input type="hidden" name="h_tipo" value="{{ h_tipo }}">
@@ -150,6 +150,7 @@
         {% if error_grafico %}<p class="filter-error" role="alert">Revisa las fechas: el inicio debe ser anterior o igual al final.</p>{% endif %}
         {% if grafico_personas %}
           <div class="chart-canvas-wrap"><canvas id="deudasPersonaChart" aria-label="{{ 'Montos originales por persona' if g_modo == 'historico' else 'Saldos pendientes por persona' }}" role="img"></canvas></div>
+          <div id="deudas-chart-detail" class="debt-chart-detail" role="region" aria-label="Detalle de la barra seleccionada" aria-live="polite" hidden></div>
           <div class="table-wrap"><table class="debt-chart-table"><thead><tr><th>Persona</th><th>Me deben</th><th>Debo</th><th>Balance {{ 'original' if g_modo == 'historico' else 'pendiente' }}</th>{% if g_modo == 'historico' %}<th>Abonado o cobrado</th>{% endif %}</tr></thead><tbody>
             {% for fila in grafico_personas %}<tr><td>{{ fila.persona }}</td><td class="positive">{{ fila.me_deben|moneda }}</td><td class="negative">{{ fila.debo|moneda }}</td><td>{{ (fila.me_deben - fila.debo)|moneda }}</td>{% if g_modo == 'historico' %}<td>{{ fila.abonado|moneda }}</td>{% endif %}</tr>{% endfor %}
           </tbody></table></div>
@@ -197,8 +198,8 @@
       </details>
     </main>
 
-    <script id="deudas-persona-data" type="application/json">{{ {"labels": grafico_personas|map(attribute="persona")|list, "me_deben": grafico_personas|map(attribute="me_deben")|list, "debo": grafico_personas|map(attribute="debo")|list}|tojson }}</script>
+    <script id="deudas-persona-data" type="application/json">{{ grafico_personas_data|tojson }}</script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
-    <script src="{{ url_for('static', filename='app.js', v='20261108-14') }}"></script>
+    <script src="{{ url_for('static', filename='app.js', v='20261108-15') }}"></script>
   </body>
 </html>

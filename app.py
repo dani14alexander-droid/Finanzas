@@ -4134,10 +4134,33 @@ def deudas():
         if (grafico_desde or grafico_hasta) and (not fecha or (grafico_desde and fecha < grafico_desde) or (grafico_hasta and fecha > grafico_hasta)):
             continue
         clave = persona.casefold()
-        fila = por_persona.setdefault(clave, {"persona": persona, "me_deben": 0, "debo": 0, "abonado": 0})
-        fila["me_deben" if item["tipo"] == "Me deben" else "debo"] += item["saldo"] if g_modo == "pendientes" else float(item.get("monto") or 0)
+        fila = por_persona.setdefault(clave, {
+            "persona": persona, "me_deben": 0, "debo": 0, "abonado": 0,
+            "detalles_me_deben": [], "detalles_debo": [],
+        })
+        lado = "me_deben" if item["tipo"] == "Me deben" else "debo"
+        monto_barra = item["saldo"] if g_modo == "pendientes" else float(item.get("monto") or 0)
+        fila[lado] += monto_barra
+        fila[f"detalles_{lado}"].append({
+            "fecha": fecha_corta(item.get("fecha", "")),
+            "categoria": item.get("categoria") or "Sin categoría",
+            "descripcion": item.get("descripcion") or "Sin descripción",
+            "monto": monto_barra,
+            "monto_original": float(item.get("monto") or 0),
+            "abonado": float(item.get("monto_pagado") or 0),
+            "saldo": item["saldo"],
+            "estado": item.get("estado") or "Pendiente",
+        })
         fila["abonado"] += float(item.get("monto_pagado") or 0)
     grafico_personas = sorted(por_persona.values(), key=lambda fila: fila["persona"].casefold())
+    grafico_personas_data = {
+        "labels": [fila["persona"] for fila in grafico_personas],
+        "me_deben": [fila["me_deben"] for fila in grafico_personas],
+        "debo": [fila["debo"] for fila in grafico_personas],
+        "detalles_me_deben": [fila["detalles_me_deben"] for fila in grafico_personas],
+        "detalles_debo": [fila["detalles_debo"] for fila in grafico_personas],
+        "modo": g_modo,
+    }
     historial_filtrado = []
     for item in pagadas:
         fecha = fecha_movimiento(item.get("fecha_pago") or "")
@@ -4159,7 +4182,7 @@ def deudas():
         total_debo=total_debo,
         balance_deudas=total_me_deben - total_debo,
         gastos_asociables=gastos_asociables(),
-        grafico_personas=grafico_personas, personas=personas,
+        grafico_personas=grafico_personas, grafico_personas_data=grafico_personas_data, personas=personas,
         g_persona=g_persona, g_desde=g_desde, g_hasta=g_hasta, g_modo=g_modo, error_grafico=error_grafico,
         historial_filtrado=historial_filtrado, h_persona=h_persona, h_tipo=h_tipo,
         h_desde=h_desde, h_hasta=h_hasta, error_historial=error_historial,
