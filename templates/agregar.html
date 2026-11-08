@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>{{ titulo or "Agregar movimiento" }}</title>
     <link rel="manifest" href="{{ url_for('static', filename='manifest.json') }}">
-    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css', v='20261107-3') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css', v='20261107-9') }}">
   </head>
   <body>
     {% include "_navigation.html" %}
@@ -154,12 +154,12 @@
               <input type="number" name="monto" min="0" step="0.01" placeholder="Monto" required>
             </label>
             <button type="submit">Guardar sueldo</button>
-            <span>Fecha: {{ sueldo_fecha }}</span>
+            <span>Fecha: {{ sueldo_fecha|fecha_corta }}</span>
           </form>
         </section>
       {% endif %}
     </main>
 
-    <script src="{{ url_for('static', filename='app.js', v='20261107-3') }}"></script>
+    <script src="{{ url_for('static', filename='app.js', v='20261107-9') }}"></script>
   </body>
 </html>

@@ -5,7 +5,7 @@
         <div>
           <strong>{{ item.persona }}</strong>
           <span>
-            {{ item.categoria }} · {{ item.fecha }} · {{ item.descripcion or "Sin descripcion" }}
+            {{ item.categoria }} · {{ item.fecha|fecha_corta }} · {{ item.descripcion or "Sin descripcion" }}
             {% if item.modalidad == 'Cuotas' %} · cuota {{ item.cuotas_pagadas + 1 }} de {{ item.cuotas_total }}{% endif %}
             {% if item.ticket_gasto_asociado %} · Gasto vinculado{% endif %}
           </span>

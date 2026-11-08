@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Planificacion</title>
     <link rel="manifest" href="{{ url_for('static', filename='manifest.json') }}">
-    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css', v='20261107-3') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css', v='20261107-9') }}">
   </head>
   <body class="planning-page">
     {% include "_navigation.html" %}
@@ -210,7 +210,7 @@
                 <li>
                   <div>
                     <strong>{{ item.categoria or "Sin categoria" }}</strong>
-                    <span>{{ item.tipo }} · {{ item.fecha }} · {{ item.descripcion or "Sin descripcion" }}</span>
+                    <span>{{ item.tipo }} · {{ item.fecha|fecha_corta }} · {{ item.descripcion or "Sin descripcion" }}</span>
                   </div>
                   <b class="{{ 'positive' if item.tipo == 'Ingreso' else 'saving' if item.tipo == 'Ahorro' else 'negative' }}">{{ item.monto|moneda }}</b>
                   <form method="post" action="{{ url_for('eliminar_planificacion', planificacion_id=item.id) }}">
@@ -226,6 +226,6 @@
       </section>
     </main>
 
-    <script src="{{ url_for('static', filename='app.js', v='20261107-3') }}"></script>
+    <script src="{{ url_for('static', filename='app.js', v='20261107-9') }}"></script>
   </body>
 </html>

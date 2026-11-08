@@ -2510,3 +2510,20 @@ input:focus, select:focus { border-color: #4584eb; outline-color: #a7c8ff; }
 @media (max-width: 380px) {
   .debt-payment { grid-template-columns: minmax(0, 1fr); }
 }
+
+.date-control { display: block; min-width: 0; position: relative; width: 100%; }
+.date-control .date-text { padding-right: 48px; width: 100%; }
+.date-control .date-calendar-icon { align-items: center; bottom: 0; display: flex; font-size: 1rem; justify-content: center; margin: 0; pointer-events: none; position: absolute; right: 0; top: 0; width: 44px; }
+.date-control .date-native { bottom: 0; cursor: pointer; height: 100%; min-height: 0; opacity: 0; padding: 0; position: absolute; right: 0; top: 0; width: 44px; }
+.debt-item .date-control { margin: 0; }
+.date-control:focus-within { border-radius: 8px; outline: 2px solid rgba(31, 111, 235, .3); }
+.cash-breakdown-row > .date-control { grid-column: 1; grid-row: 1; }
+.cash-breakdown-row > input[name="sub_categoria"] { grid-column: 2; grid-row: 1; }
+.cash-breakdown-row > input[name="sub_descripcion"] { grid-column: 1; grid-row: 2; }
+.cash-breakdown-row > input[name="sub_monto"] { grid-column: 2; grid-row: 2; }
+@media (max-width: 720px) {
+  .cash-breakdown-row > .date-control,
+  .cash-breakdown-row > input[name="sub_categoria"],
+  .cash-breakdown-row > input[name="sub_descripcion"],
+  .cash-breakdown-row > input[name="sub_monto"] { grid-column: auto; grid-row: auto; }
+}

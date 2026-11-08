@@ -6,7 +6,7 @@
     <meta name="theme-color" content="#0a193b">
     <title>Finanzas · Panel</title>
     <link rel="manifest" href="{{ url_for('static', filename='manifest.json') }}">
-    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css', v='20261107-7') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css', v='20261107-9') }}">
   </head>
   <body class="finance-dashboard">
     {% include "_navigation.html" %}
@@ -20,7 +20,7 @@
         <div>
           <p class="eyebrow">Tu salud financiera</p>
           <h1>Hola, este es tu panorama</h1>
-          <p class="hero-caption">{{ icon('calendar') }} Ciclo {{ periodo_inicio.strftime("%d %b") }} — {{ periodo_fin.strftime("%d %b %Y") }} <span class="hero-divider">|</span> Actualizado {{ fecha_calculo.strftime("%d-%m-%Y") }}</p>
+          <p class="hero-caption">{{ icon('calendar') }} Ciclo {{ periodo_inicio|fecha_corta }} — {{ periodo_fin|fecha_corta }} <span class="hero-divider">|</span> Actualizado {{ fecha_calculo|fecha_corta }}</p>
         </div>
         <div class="hero-actions">
           <a class="button" href="{{ url_for('agregar_por_tipo', tipo='gasto') }}">＋ Registrar movimiento</a>
@@ -125,6 +125,6 @@
 
     <script id="variable-expenses-data" type="application/json">{{ {"labels": gastos_variables.filas|map(attribute="etiqueta")|list, "values": gastos_variables.filas|map(attribute="monto")|list, "details": gastos_variables.filas, "goal": gastos_variables.meta, "view": gastos_variables.vista}|tojson }}</script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
-    <script src="{{ url_for('static', filename='app.js', v='20261107-3') }}"></script>
+    <script src="{{ url_for('static', filename='app.js', v='20261107-9') }}"></script>
   </body>
 </html>

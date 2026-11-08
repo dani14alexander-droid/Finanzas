@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Deudas</title>
     <link rel="manifest" href="{{ url_for('static', filename='manifest.json') }}">
-    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css', v='20261107-8') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css', v='20261107-9') }}">
   </head>
   <body>
     {% include "_navigation.html" %}
@@ -80,7 +80,7 @@
               <select name="gasto_asociado_id">
                 <option value="">Sin asociar</option>
                 {% for gasto in gastos_asociables %}
-                  <option value="{{ gasto.id }}">{{ gasto.fecha }} · {{ gasto.categoria }} · {{ gasto.descripcion or 'Sin descripción' }} · {{ gasto.monto|moneda }}</option>
+                  <option value="{{ gasto.id }}">{{ gasto.fecha|fecha_corta }} · {{ gasto.categoria }} · {{ gasto.descripcion or 'Sin descripción' }} · {{ gasto.monto|moneda }}</option>
                 {% endfor %}
               </select>
               <small>Se descontará del gasto únicamente cuando la deuda se marque pagada.</small>
@@ -194,6 +194,6 @@
 
     <script id="deudas-persona-data" type="application/json">{{ {"labels": grafico_personas|map(attribute="persona")|list, "me_deben": grafico_personas|map(attribute="me_deben")|list, "debo": grafico_personas|map(attribute="debo")|list}|tojson }}</script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
-    <script src="{{ url_for('static', filename='app.js', v='20261107-5') }}"></script>
+    <script src="{{ url_for('static', filename='app.js', v='20261107-9') }}"></script>
   </body>
 </html>

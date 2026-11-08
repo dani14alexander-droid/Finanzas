@@ -4,7 +4,7 @@
       <li>
         <div>
           <strong>{{ item.categoria or "Sin categoria" }}</strong>
-          <span>{{ item.fecha }} · {{ item.descripcion or "Sin descripcion" }}</span>
+          <span>{{ item.fecha|fecha_corta }} · {{ item.descripcion or "Sin descripcion" }}</span>
         </div>
         <b class="{{ 'positive' if item.tipo in ['Ingreso', 'Restitución'] else 'saving' if item.tipo == 'Ahorro' else 'negative' }}">
           {{ item.monto|moneda }}

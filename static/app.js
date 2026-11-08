@@ -33,11 +33,61 @@ document.querySelectorAll(".topbar nav a").forEach((link) => {
   }
 });
 
-document.querySelectorAll('input[type="date"]').forEach((dateInput) => {
-  if (!dateInput.value && !dateInput.hasAttribute("data-allow-empty")) {
-    dateInput.value = todayInChile;
-  }
-});
+const displayDate = (value) => {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value || "");
+  return match ? `${match[3]}-${match[2]}-${match[1]}` : "";
+};
+
+const initializeDateFields = (root = document) => {
+  root.querySelectorAll('input[type="date"]:not([data-date-initialized])').forEach((dateInput) => {
+    dateInput.dataset.dateInitialized = "true";
+    if (!dateInput.value && !dateInput.hasAttribute("data-allow-empty")) {
+      dateInput.value = todayInChile;
+    }
+    const wrapper = document.createElement("span");
+    wrapper.className = "date-control";
+    const textInput = document.createElement("input");
+    textInput.type = "text";
+    textInput.className = "date-text";
+    textInput.inputMode = "numeric";
+    textInput.placeholder = "dd-mm-aaaa";
+    textInput.maxLength = 10;
+    textInput.autocomplete = "off";
+    textInput.required = dateInput.required;
+    textInput.disabled = dateInput.disabled;
+    if (dateInput.hasAttribute("form")) textInput.setAttribute("form", dateInput.getAttribute("form"));
+    if (dateInput.hasAttribute("aria-label")) textInput.setAttribute("aria-label", dateInput.getAttribute("aria-label"));
+    textInput.value = displayDate(dateInput.value);
+    dateInput.required = false;
+    dateInput.classList.add("date-native");
+    dateInput.setAttribute("aria-label", "Seleccionar fecha en el calendario");
+    const icon = document.createElement("span");
+    icon.className = "date-calendar-icon";
+    icon.setAttribute("aria-hidden", "true");
+    icon.textContent = "📅";
+    dateInput.before(wrapper);
+    wrapper.append(textInput, icon, dateInput);
+
+    textInput.addEventListener("input", () => {
+      const digits = textInput.value.replace(/\D/g, "").slice(0, 8);
+      textInput.value = [digits.slice(0, 2), digits.slice(2, 4), digits.slice(4)].filter(Boolean).join("-");
+      dateInput.value = digits.length === 8 ? `${digits.slice(4)}-${digits.slice(2, 4)}-${digits.slice(0, 2)}` : "";
+      textInput.setCustomValidity(digits && (digits.length !== 8 || !dateInput.value) ? "Ingresa una fecha válida en formato dd-mm-aaaa." : "");
+    });
+    const syncFromCalendar = () => {
+      textInput.value = displayDate(dateInput.value);
+      textInput.setCustomValidity("");
+    };
+    dateInput.addEventListener("input", syncFromCalendar);
+    dateInput.addEventListener("change", syncFromCalendar);
+    dateInput.addEventListener("click", () => {
+      if (typeof dateInput.showPicker === "function") {
+        try { dateInput.showPicker(); } catch { /* El navegador puede abrirlo por sí mismo. */ }
+      }
+    });
+  });
+};
+initializeDateFields();
 
 const categoryListsByType = {
   Ahorro: "categorias-ahorro",
@@ -262,6 +312,7 @@ document.querySelectorAll(".cash-breakdown").forEach((breakdown) => {
     const row = template.content.firstElementChild.cloneNode(true);
     setDefaultDate(row);
     list.append(row);
+    initializeDateFields(row);
     row.querySelector('input[name="sub_categoria"]')?.focus();
   });
 
@@ -276,9 +327,10 @@ document.querySelectorAll(".cash-breakdown").forEach((breakdown) => {
       row.remove();
       return;
     }
-    row.querySelectorAll("input").forEach((input) => {
+    row.querySelectorAll("input[name]").forEach((input) => {
       input.value = input.name === "sub_fecha" ? mainDate?.value || "" : "";
     });
+    row.querySelectorAll('input[type="date"]').forEach((input) => input.dispatchEvent(new Event("change")));
   });
 
   type?.addEventListener("change", updateCashVisibility);

@@ -1683,7 +1683,7 @@ def tooltip_operaciones(items, titulo):
     lineas = [f"{titulo}: {moneda(total)}"]
     for item in items[:6]:
         nombre = item.get("descripcion") or item.get("categoria") or item.get("persona") or "Sin detalle"
-        lineas.append(f"{item.get('fecha', '')} · {nombre}: {moneda(item['monto'])}")
+        lineas.append(f"{fecha_corta(item.get('fecha', ''))} · {nombre}: {moneda(item['monto'])}")
     if len(items) > 6:
         lineas.append(f"+{len(items) - 6} mas")
     return "\n".join(lineas)
@@ -1700,7 +1700,7 @@ def operaciones_json(items, titulo):
             "total": moneda(total),
             "items": [
                 {
-                    "fecha": item.get("fecha", ""),
+                    "fecha": fecha_corta(item.get("fecha", "")),
                     "nombre": item.get("descripcion")
                     or item.get("categoria")
                     or item.get("persona")
@@ -2085,7 +2085,7 @@ def clave_periodo(fecha, vista):
 
 def etiqueta_periodo(fecha, vista):
     if vista == "diaria":
-        return fecha.strftime("%d-%m-%y")
+        return fecha.strftime("%d-%m-%Y")
     if vista == "semanal":
         return f"{fecha.isocalendar().year}-S{fecha.isocalendar().week:02d}"
     return fecha.strftime("%m-%Y")
@@ -2512,7 +2512,7 @@ def datos_gastos_variables(datos_dashboard, vista="diaria"):
         gastos_por_fecha[fecha] = gastos_por_fecha.get(fecha, 0) + monto
         detalles_por_fecha.setdefault(fecha, []).append(
             {
-                "fecha": fecha.isoformat(),
+                "fecha": fecha.strftime("%d-%m-%Y"),
                 "categoria": categoria or CATEGORIA_SIN_ASIGNAR,
                 "descripcion": descripcion or categoria or "Sin descripción",
                 "monto": monto,
@@ -2569,7 +2569,7 @@ def datos_gastos_variables(datos_dashboard, vista="diaria"):
             detalles = detalles_por_fecha.get(actual, [])
             filas.append(
                 {
-                    "etiqueta": actual.strftime("%d-%m"),
+                    "etiqueta": actual.strftime("%d-%m-%Y"),
                     "monto": gastos_por_fecha.get(actual, 0),
                     "detalles": detalles,
                     "categorias": resumen_categorias(detalles),
@@ -2594,7 +2594,7 @@ def datos_gastos_variables(datos_dashboard, vista="diaria"):
             ]
             filas.append(
                 {
-                    "etiqueta": f"{semana_inicio.strftime('%d-%m')} al {semana_fin.strftime('%d-%m')}",
+                    "etiqueta": f"{semana_inicio.strftime('%d-%m-%Y')} al {semana_fin.strftime('%d-%m-%Y')}",
                     "monto": monto,
                     "detalles": detalles,
                     "categorias": resumen_categorias(detalles),
