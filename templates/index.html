@@ -6,7 +6,7 @@
     <meta name="theme-color" content="#0a193b">
     <title>Finanzas · Panel</title>
     <link rel="manifest" href="{{ url_for('static', filename='manifest.json') }}">
-    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css', v='20261107-3') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css', v='20261107-6') }}">
   </head>
   <body class="finance-dashboard">
     {% include "_navigation.html" %}
@@ -33,7 +33,7 @@
           <span class="metric-icon metric-icon-balance">{{ icon('wallet') }}</span>
           <span>Disponible este ciclo</span>
           <strong class="{{ 'positive' if disponible >= 0 else 'negative' }}">{{ disponible|moneda }}</strong>
-          <small>Luego de gastos, deudas y ahorros</small>
+          <small>Incluye gastos, ahorros y movimientos de préstamos</small>
         </article>
         <article class="metric-card">
           <span class="metric-icon metric-icon-income">{{ icon('income') }}</span>
@@ -54,6 +54,11 @@
           <span class="metric-icon metric-icon-weekly">{{ icon('target') }}</span>
           <span>Referencia semanal</span><strong class="{{ 'positive' if cuota_semanal >= 0 else 'negative' }}">{{ cuota_semanal|moneda }}</strong>
           <small>Disponible dividido por semanas restantes</small>
+        </article>
+        <article class="metric-card">
+          <span class="metric-icon metric-icon-balance">{{ icon('card') }}</span>
+          <span>Cuentas por cobrar</span><strong>{{ cuentas_por_cobrar|moneda }}</strong>
+          <small>Saldo actual pendiente de cobro</small>
         </article>
       </section>
 
@@ -87,7 +92,7 @@
       <section class="panel variable-expenses-panel finance-spending-panel">
         <div class="panel-header variable-expenses-head">
           <div><p class="eyebrow">Control de ritmo</p><h2>Gasto variable del periodo</h2>
-            <p class="hint-inline">Promedio {{ gastos_variables.gasto_promedio|moneda }} al día · Meta {{ 'diaria' if gastos_variables.vista == 'diaria' else 'semanal' }} {{ gastos_variables.meta|moneda }} · Ingresos {{ gastos_variables.ingresos|moneda }} menos compromisos {{ gastos_variables.compromiso|moneda }}</p>
+            <p class="hint-inline">Promedio {{ gastos_variables.gasto_promedio|moneda }} al día · Meta {{ 'diaria' if gastos_variables.vista == 'diaria' else 'semanal' }} {{ gastos_variables.meta|moneda }} · Ingresos {{ gastos_variables.ingresos|moneda }}, compromisos {{ gastos_variables.compromiso|moneda }} y flujo de préstamos {{ gastos_variables.flujo_cuentas|moneda }}</p>
           </div>
           <form class="view-switch" method="get">
             <button name="gastos_vista" value="diaria" class="{{ 'active' if gastos_variables.vista == 'diaria' else '' }}">Diaria</button>

@@ -449,7 +449,7 @@ def leer_movimientos():
                     movimiento["monto"] = float(movimiento["monto"] or 0)
                     movimiento["id"] = indice
                     movimientos.append(movimiento)
-                return movimientos
+                return clasificar_movimientos_cobrar(movimientos)
 
     asegurar_csv()
     with CSV_PATH.open(newline="", encoding="utf-8") as archivo:
@@ -463,7 +463,41 @@ def leer_movimientos():
                 movimiento["monto"] = 0
             movimiento["id"] = indice
             movimientos.append(movimiento)
+    return clasificar_movimientos_cobrar(movimientos)
+
+
+def clasificar_movimientos_cobrar(movimientos):
+    """Reconoce los movimientos antiguos ligados a prestamos otorgados."""
+    tickets = {
+        deuda.get("ticket_deuda")
+        for deuda in leer_deudas()
+        if deuda.get("ticket_deuda") and deuda.get("tipo") == "Me deben"
+        and not es_compra_compartida(deuda)
+    }
+    for movimiento in movimientos:
+        if movimiento.get("ticket_deuda") not in tickets:
+            continue
+        if movimiento.get("origen_deuda") == "origen":
+            movimiento["tipo"] = "Cuenta por cobrar"
+            movimiento["categoria"] = "Cuenta por cobrar"
+        elif movimiento.get("origen_deuda") == "pago":
+            movimiento["tipo"] = "Restitución"
+            movimiento["categoria"] = "Restitución"
     return movimientos
+
+
+def flujo_cuentas_por_cobrar(movimientos):
+    return sum(
+        float(item.get("monto") or 0) * (1 if item.get("tipo") == "Restitución" else -1)
+        for item in movimientos if item.get("tipo") in {"Cuenta por cobrar", "Restitución"}
+    )
+
+
+def saldo_cuentas_por_cobrar(deudas):
+    return sum(
+        max(float(item.get("monto") or 0) - float(item.get("monto_pagado") or 0), 0)
+        for item in deudas if item.get("tipo") == "Me deben" and item.get("estado") != "Pagada"
+    )
 
 
 def escribir_movimientos(movimientos):
@@ -1453,7 +1487,7 @@ def disponible_ciclo_desde_inicio(movimientos, inicio, cache=None):
         for item in items
         if item["tipo"] == "Ahorro"
     )
-    disponible = saldo_anterior + ingresos - gastos - ahorros
+    disponible = saldo_anterior + ingresos - gastos - ahorros + flujo_cuentas_por_cobrar(items)
     cache[clave] = disponible
     return disponible
 
@@ -2117,6 +2151,7 @@ def construir_periodos(vista, fechas, desde=None, hasta=None):
                 "detalle_ahorros": [],
                 "detalle_me_deben": [],
                 "detalle_debo": [],
+                "flujo_cuentas": 0,
             },
         )
 
@@ -2237,6 +2272,8 @@ def resumen_historico(vista, desde=None, hasta=None):
             if item.get("categoria", "").strip().lower() == CATEGORIA_AHORRO_FLEXIBLE.lower():
                 periodo["gastos"] += total_detalles_movimiento(item, subgastos_agrupados)
             periodo["detalle_ahorros"].append(item)
+        elif item["tipo"] in {"Cuenta por cobrar", "Restitución"}:
+            periodo["flujo_cuentas"] += flujo_cuentas_por_cobrar([item])
 
     for item in deudas_lista:
         fecha = fecha_movimiento(item["fecha"])
@@ -2259,7 +2296,7 @@ def resumen_historico(vista, desde=None, hasta=None):
     filas = [periodos[clave] for clave in sorted(periodos)]
     filas_deudas = [periodos_deudas[clave] for clave in sorted(periodos_deudas)]
     for fila in filas:
-        fila["balance"] = fila["ingresos"] - fila["gastos"] - fila["ahorros"]
+        fila["balance"] = fila["ingresos"] - fila["gastos"] - fila["ahorros"] + fila["flujo_cuentas"]
 
     if filas:
         inicio_visible = (desde or min(fechas_todas)) if (desde or hasta) else rango_historico(vista, fechas_todas)[0]
@@ -2281,6 +2318,8 @@ def resumen_historico(vista, desde=None, hasta=None):
                 variacion = -monto_ahorro_neto(item, subgastos_agrupados)
                 if item.get("categoria", "").strip().lower() == CATEGORIA_AHORRO_FLEXIBLE.lower():
                     variacion -= total_detalles_movimiento(item, subgastos_agrupados)
+            elif item.get("tipo") in {"Cuenta por cobrar", "Restitución"}:
+                variacion = flujo_cuentas_por_cobrar([item])
             else:
                 continue
             variacion_por_fecha[fecha] = variacion_por_fecha.get(fecha, 0) + variacion
@@ -2384,7 +2423,8 @@ def calcular_dashboard(filtrar_periodo=False):
         if item.get("categoria", "").strip().lower() != CATEGORIA_EFECTIVO.lower()
     ]
     ahorros_lista = [item for item in movimientos if item["tipo"] == "Ahorro"]
-    descuentos_compartidos = descuentos_compras_compartidas(leer_deudas())
+    deudas_actuales = leer_deudas()
+    descuentos_compartidos = descuentos_compras_compartidas(deudas_actuales)
     ingresos = sum(item["monto"] for item in ingresos_lista)
     gastos = sum(
         monto_efectivo_movimiento(item, descuentos_compartidos, subgastos_agrupados)
@@ -2400,7 +2440,8 @@ def calcular_dashboard(filtrar_periodo=False):
         for item in deudas_lista
     )
     ahorros = sum(monto_ahorro_neto(item, subgastos_agrupados) for item in ahorros_lista)
-    disponible = ingresos - gastos - deuda - ahorros
+    flujo_cuentas = flujo_cuentas_por_cobrar(movimientos)
+    disponible = ingresos - gastos - deuda - ahorros + flujo_cuentas
     cuota_semanal = disponible / semanas if semanas > 0 else 0
     return {
         "movimientos": movimientos,
@@ -2414,8 +2455,10 @@ def calcular_dashboard(filtrar_periodo=False):
         "ahorros": ahorros,
         "ahorros_acumulados": ahorros_acumulados,
         "ahorros_acumulados_categoria": ahorros_acumulados_categoria,
-        "balance": ingresos - gastos - deuda,
+        "balance": ingresos - gastos - deuda + flujo_cuentas,
         "disponible": disponible,
+        "flujo_cuentas": flujo_cuentas,
+        "cuentas_por_cobrar": saldo_cuentas_por_cobrar(deudas_actuales),
         "semanas": semanas,
         "dias_restantes": dias_restantes,
         "fecha_calculo": hoy,
@@ -2454,8 +2497,9 @@ def datos_gastos_variables(datos_dashboard, vista="diaria"):
     )
     dias_periodo = max((fin - inicio).days + 1, 1)
     cantidad_periodos = dias_periodo if vista == "diaria" else max(ceil(dias_periodo / 7), 1)
-    meta_diaria = (ingresos_periodo - compromiso_mensual) / dias_periodo
-    meta = meta_diaria if vista == "diaria" else (ingresos_periodo - compromiso_mensual) / cantidad_periodos
+    flujo_cuentas = flujo_cuentas_por_cobrar(datos_dashboard["movimientos"])
+    meta_diaria = (ingresos_periodo - compromiso_mensual + flujo_cuentas) / dias_periodo
+    meta = meta_diaria if vista == "diaria" else (ingresos_periodo - compromiso_mensual + flujo_cuentas) / cantidad_periodos
 
     descuentos = descuentos_compras_compartidas(leer_deudas())
     subgastos = subgastos_por_movimiento()
@@ -2574,6 +2618,7 @@ def datos_gastos_variables(datos_dashboard, vista="diaria"):
         "meta_diaria": meta_diaria,
         "ingresos": ingresos_periodo,
         "compromiso": compromiso_mensual,
+        "flujo_cuentas": flujo_cuentas,
         "filas": filas,
         "gasto_promedio": gasto_promedio,
         "upperstock": upperstock,
@@ -2626,7 +2671,7 @@ def recomendaciones_dashboard(datos, variables):
     if datos["disponible"] < 0:
         recomendaciones.append({
             "tono": "danger", "titulo": "El ciclo va en d\u00e9ficit",
-            "texto": "Los gastos y ahorros registrados superan los ingresos del periodo. Revisa primero los gastos variables y compromisos pr\u00f3ximos.",
+            "texto": "El disponible del periodo es negativo despu\u00e9s de gastos, ahorros y movimientos de cuentas por cobrar. Revisa tus compromisos y gasto variable.",
             "dato": f"Diferencia {moneda(datos['disponible'])}",
         })
     elif datos["cuota_semanal"] >= 0:
@@ -2690,7 +2735,7 @@ def calcular_planificacion():
     ingresos = datos["ingresos"] + plan_ingresos
     gastos = datos["gastos"] + datos["deuda"] + fijos_gastos + plan_gastos
     ahorros = datos["ahorros"] + fijos_ahorros + plan_ahorros
-    disponible = ingresos - gastos - ahorros
+    disponible = ingresos - gastos - ahorros + datos["flujo_cuentas"]
 
     asignaciones = asignaciones_macro_dict()
     variables = {macro: 0.0 for macro in MACROS_ASIGNABLES}
@@ -3033,6 +3078,8 @@ def editar(movimiento_id):
         return redirect(volver_a)
 
     movimiento = movimientos[movimiento_id]
+    if movimiento.get("tipo") in {"Cuenta por cobrar", "Restitución"}:
+        return redirect(url_for("deudas"))
     deudas_compartidas = deudas_compartidas_por_gasto(leer_deudas()).get(
         movimiento.get("ticket_movimiento", ""), []
     )
@@ -3132,7 +3179,7 @@ def agregar_desde_resumen():
         parametros_resumen["ciclo"] = ciclo
     if busqueda:
         parametros_resumen["q"] = busqueda
-    if filtro_tipo in TIPOS_VALIDOS:
+    if filtro_tipo in TIPOS_VALIDOS | {"Cuenta por cobrar", "Restitución"}:
         parametros_resumen["tipo"] = filtro_tipo
     parametros_resumen["agregar"] = "1"
     # Mantener la fecha ingresada para que sea cómoda la carga consecutiva
@@ -3591,7 +3638,7 @@ def deudas():
         escribir_deudas(deudas_lista)
         tipo_origen = None
         if tipo == "Me deben" and not es_compra_compartida(item):
-            tipo_origen = "Gasto"
+            tipo_origen = "Cuenta por cobrar"
         elif tipo == "Debo" and modalidad == "Prestamo":
             tipo_origen = "Ingreso"
         if tipo_origen:
@@ -3599,7 +3646,7 @@ def deudas():
                 {
                     "fecha": item["fecha"],
                     "tipo": tipo_origen,
-                    "categoria": "Deuda",
+                    "categoria": "Cuenta por cobrar" if tipo_origen == "Cuenta por cobrar" else "Deuda",
                     "descripcion": item["descripcion"] or item["persona"],
                     "monto": item["monto"],
                     "ticket_deuda": ticket_deuda,
@@ -3633,9 +3680,13 @@ def deudas():
     h_tipo = request.args.get("h_tipo", "Todos")
     if h_tipo not in TIPOS_DEUDA | {"Todos"}:
         h_tipo = "Todos"
-    personas = sorted({item.get("persona", "").strip() for item in pendientes if item.get("persona", "").strip()}, key=str.casefold)
+    g_modo = request.args.get("g_modo", "pendientes")
+    if g_modo not in {"pendientes", "historico"}:
+        g_modo = "pendientes"
+    deudas_grafico = pendientes if g_modo == "pendientes" else deudas_lista
+    personas = sorted({item.get("persona", "").strip() for item in deudas_grafico if item.get("persona", "").strip()}, key=str.casefold)
     por_persona = {}
-    for item in pendientes:
+    for item in deudas_grafico:
         fecha = fecha_movimiento(item.get("fecha") or "")
         persona = item.get("persona", "").strip() or "Sin persona"
         if error_grafico or (g_persona and persona.casefold() != g_persona.casefold()):
@@ -3643,8 +3694,9 @@ def deudas():
         if (grafico_desde or grafico_hasta) and (not fecha or (grafico_desde and fecha < grafico_desde) or (grafico_hasta and fecha > grafico_hasta)):
             continue
         clave = persona.casefold()
-        fila = por_persona.setdefault(clave, {"persona": persona, "me_deben": 0, "debo": 0})
-        fila["me_deben" if item["tipo"] == "Me deben" else "debo"] += item["saldo"]
+        fila = por_persona.setdefault(clave, {"persona": persona, "me_deben": 0, "debo": 0, "abonado": 0})
+        fila["me_deben" if item["tipo"] == "Me deben" else "debo"] += item["saldo"] if g_modo == "pendientes" else float(item.get("monto") or 0)
+        fila["abonado"] += float(item.get("monto_pagado") or 0)
     grafico_personas = sorted(por_persona.values(), key=lambda fila: fila["persona"].casefold())
     historial_filtrado = []
     for item in pagadas:
@@ -3668,7 +3720,7 @@ def deudas():
         balance_deudas=total_me_deben - total_debo,
         gastos_asociables=gastos_asociables(),
         grafico_personas=grafico_personas, personas=personas,
-        g_persona=g_persona, g_desde=g_desde, g_hasta=g_hasta, error_grafico=error_grafico,
+        g_persona=g_persona, g_desde=g_desde, g_hasta=g_hasta, g_modo=g_modo, error_grafico=error_grafico,
         historial_filtrado=historial_filtrado, h_persona=h_persona, h_tipo=h_tipo,
         h_desde=h_desde, h_hasta=h_hasta, error_historial=error_historial,
         historial_abierto=bool(request.args.get("historial")),
@@ -3693,12 +3745,12 @@ def pagar_deuda(deuda_id):
             return redirect(url_for("deudas"))
         abono = round(min(abono, saldo_actual), 2)
         if not es_compra_compartida(item):
-            tipo_movimiento = "Ingreso" if item["tipo"] == "Me deben" else "Gasto"
+            tipo_movimiento = "Restitución" if item["tipo"] == "Me deben" else "Gasto"
             guardar_movimiento(
                 {
                     "fecha": fecha_pago,
                     "tipo": tipo_movimiento,
-                    "categoria": item["categoria"] or "Deudas",
+                    "categoria": "Restitución" if item["tipo"] == "Me deben" else item["categoria"] or "Deudas",
                     "descripcion": f"{item['tipo']} - {item['persona']} | {item['descripcion']}",
                     "monto": abono,
                     "ticket_deuda": item.get("ticket_deuda", ""),
@@ -3806,7 +3858,7 @@ def editar_deuda(deuda_id):
             eliminar_movimientos_deuda(ticket, "origen")
         tipo_origen = None
         if tipo == "Me deben" and not es_compra_compartida(item):
-            tipo_origen = "Gasto"
+            tipo_origen = "Cuenta por cobrar"
         elif tipo == "Debo" and modalidad == "Prestamo":
             tipo_origen = "Ingreso"
         if tipo_origen and actualizar_origen:
@@ -3814,7 +3866,7 @@ def editar_deuda(deuda_id):
                 {
                     "fecha": item["fecha"],
                     "tipo": tipo_origen,
-                    "categoria": "Deuda",
+                    "categoria": "Cuenta por cobrar" if tipo_origen == "Cuenta por cobrar" else "Deuda",
                     "descripcion": item["descripcion"] or item["persona"],
                     "monto": item["monto"],
                     "ticket_deuda": ticket,
@@ -3822,7 +3874,7 @@ def editar_deuda(deuda_id):
                 }
             )
         if request.args.get("volver_historial"):
-            filtros = {nombre: request.args.get(nombre, "") for nombre in ("h_persona", "h_tipo", "h_desde", "h_hasta", "g_persona", "g_desde", "g_hasta")}
+            filtros = {nombre: request.args.get(nombre, "") for nombre in ("h_persona", "h_tipo", "h_desde", "h_hasta", "g_modo", "g_persona", "g_desde", "g_hasta")}
             return redirect(url_for("deudas", historial=1, _anchor="historial-deudas", **filtros))
         return redirect(url_for("deudas"))
 
@@ -3929,7 +3981,8 @@ def resumen():
     agregar_rapido = request.args.get("agregar") == "1"
     fecha_agregar = request.args.get("agregar_fecha", "").strip() or fecha_hoy_chile().isoformat()
     semanas, _, _ = calcular_semanas_restantes(fecha_hoy_chile(), periodo_fin)
-    descuentos_compartidos = descuentos_compras_compartidas(leer_deudas())
+    deudas_actuales = leer_deudas()
+    descuentos_compartidos = descuentos_compras_compartidas(deudas_actuales)
     subgastos_agrupados = subgastos_por_movimiento()
     ingresos = sum(item["monto"] for item in movimientos if item["tipo"] == "Ingreso")
     gastos = sum(
@@ -3948,7 +4001,8 @@ def resumen():
         for item in movimientos
         if item["tipo"] == "Ahorro"
     )
-    disponible = ingresos - gastos - ahorros
+    flujo_cuentas = flujo_cuentas_por_cobrar(movimientos)
+    disponible = ingresos - gastos - ahorros + flujo_cuentas
     cuota_semanal = disponible / semanas if semanas > 0 else 0
     totales = totales_efectivos_por_categoria(
         movimientos, descuentos_compartidos, subgastos_agrupados
@@ -4006,11 +4060,12 @@ def resumen():
         if item.get("tipo") == "Gasto" and "deuda" in (item.get("categoria") or "").lower()
     )
     costos_sin_deuda = max(gastos - deuda, 0)
-    disponible_ingresos = max(ingresos - gastos - ahorros, 0)
+    disponible_ingresos = max(disponible, 0)
     distribucion_ingresos = [
         {"categoria": "Gastos", "monto": costos_sin_deuda, "color": "#1f6feb"},
         {"categoria": "Deuda", "monto": deuda, "color": "#c2410c"},
         {"categoria": "Ahorro", "monto": ahorros, "color": "#7c3aed"},
+        {"categoria": "Préstamos otorgados netos", "monto": max(-flujo_cuentas, 0), "color": "#4669b2"},
         {"categoria": "Disponible", "monto": disponible_ingresos, "color": "#15803d"},
     ]
     distribucion_ingresos = [item for item in distribucion_ingresos if item["monto"] > 0]
@@ -4018,7 +4073,7 @@ def resumen():
         distribucion_ingresos
     )
 
-    deudas_compartidas = deudas_compartidas_por_gasto(leer_deudas())
+    deudas_compartidas = deudas_compartidas_por_gasto(deudas_actuales)
     gastos_variables = datos_gastos_variables(
         {
             "periodo_inicio": periodo_inicio,
@@ -4029,7 +4084,7 @@ def resumen():
         request.args.get("gastos_vista", "diaria"),
     )
     movimientos_filtrados = movimientos
-    if filtro_tipo in TIPOS_VALIDOS:
+    if filtro_tipo in TIPOS_VALIDOS | {"Cuenta por cobrar", "Restitución"}:
         movimientos_filtrados = [
             item for item in movimientos_filtrados if item["tipo"] == filtro_tipo
         ]
@@ -4050,9 +4105,11 @@ def resumen():
             ).lower()
         ]
 
+    deudas_por_ticket = {item.get("ticket_deuda"): item["id"] for item in deudas_actuales if item.get("ticket_deuda")}
     movimientos_filtrados = [
         {
             **item,
+            "deuda_id": deudas_por_ticket.get(item.get("ticket_deuda")),
             "es_compra_compartida": bool(
                 deudas_compartidas.get(item.get("ticket_movimiento", ""))
             ),
@@ -4063,6 +4120,8 @@ def resumen():
     return render_template(
         "resumen.html",
         ingresos=ingresos,
+        cuentas_por_cobrar=saldo_cuentas_por_cobrar(deudas_actuales),
+        flujo_cuentas=flujo_cuentas,
         gastos=gastos,
         ahorros=ahorros,
         balance=ingresos - gastos,

@@ -79,7 +79,7 @@
           </label>
 
           <div class="actions">
-            <a class="link-button" href="{{ url_for('deudas', historial=1, h_persona=request.args.get('h_persona'), h_tipo=request.args.get('h_tipo'), h_desde=request.args.get('h_desde'), h_hasta=request.args.get('h_hasta'), g_persona=request.args.get('g_persona'), g_desde=request.args.get('g_desde'), g_hasta=request.args.get('g_hasta'), _anchor='historial-deudas') if request.args.get('volver_historial') else url_for('deudas') }}">Cancelar</a>
+            <a class="link-button" href="{{ url_for('deudas', historial=1, h_persona=request.args.get('h_persona'), h_tipo=request.args.get('h_tipo'), h_desde=request.args.get('h_desde'), h_hasta=request.args.get('h_hasta'), g_modo=request.args.get('g_modo'), g_persona=request.args.get('g_persona'), g_desde=request.args.get('g_desde'), g_hasta=request.args.get('g_hasta'), _anchor='historial-deudas') if request.args.get('volver_historial') else url_for('deudas') }}">Cancelar</a>
             <button type="submit">Guardar cambios</button>
           </div>
         </form>

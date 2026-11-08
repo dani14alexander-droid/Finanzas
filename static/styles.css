@@ -2395,7 +2395,8 @@ input:focus, select:focus { border-color: #4584eb; outline-color: #a7c8ff; }
 .hero-actions .button { background: #102f70; border-color: #102f70; color: white; }
 .hero-actions .button:hover { background: #1d58b5; }
 .hero-actions span { color: #234272; }
-.finance-metrics { gap: 12px; grid-template-columns: 1.15fr repeat(4, minmax(0, 1fr)); }
+.finance-metrics { gap: 12px; grid-template-columns: 1.15fr repeat(5, minmax(0, 1fr)); }
+.receivables-stats { grid-template-columns: repeat(5, minmax(0, 1fr)); }
 .metric-card { background: #f9fbff; border: 1px solid #ccdaf0; border-radius: 12px; box-shadow: 0 2px 3px rgba(22, 51, 101, .16), 0 9px 23px rgba(31, 59, 105, .04); gap: 7px; padding: 16px 17px; }
 .metric-card.metric-balance { background: #e0edff; border: 1.5px solid #70a7ff; }
 .metric-card > span:not(.metric-icon) { color: #102751; font-size: .85rem; font-weight: 700; }
@@ -2453,6 +2454,7 @@ input:focus, select:focus { border-color: #4584eb; outline-color: #a7c8ff; }
 }
 @media (min-width: 721px) and (max-width: 1279px) {
   .finance-metrics { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .receivables-stats { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .metric-balance { grid-column: span 2; }
 }
 @media (max-width: 720px) {
@@ -2463,6 +2465,7 @@ input:focus, select:focus { border-color: #4584eb; outline-color: #a7c8ff; }
   .finance-hero h1 { font-size: 1.8rem; }
   .hero-actions { align-items: flex-start; justify-items: start; }
   .finance-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .receivables-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .metric-balance { grid-column: 1 / -1; }
   .metric-card { padding: 13px; }
   .metric-card strong { font-size: 1.25rem; }

@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Resumen</title>
     <link rel="manifest" href="{{ url_for('static', filename='manifest.json') }}">
-    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css', v='20261107-3') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css', v='20261107-6') }}">
   </head>
   <body>
     {% include "_navigation.html" %}
@@ -36,7 +36,7 @@
         </form>
       </section>
 
-      <section class="stats stats-wide">
+      <section class="stats stats-wide receivables-stats">
         <article>
           <span>Ingresos</span>
           <strong class="positive">{{ ingresos|moneda }}</strong>
@@ -55,6 +55,10 @@
             {{ disponible|moneda }}
           </strong>
         </article>
+        <article>
+          <span>Cuentas por cobrar · saldo actual</span>
+          <strong>{{ cuentas_por_cobrar|moneda }}</strong>
+        </article>
       </section>
 
       <section class="panel variable-expenses-panel">
@@ -64,7 +68,7 @@
             <p class="hint-inline">
               Gasto promedio hasta ahora: {{ gastos_variables.gasto_promedio|moneda }}.
               Meta {{ 'diaria' if gastos_variables.vista == 'diaria' else 'semanal' }}:
-              {{ gastos_variables.meta|moneda }} · No incluye gastos fijos ni ahorros.
+              {{ gastos_variables.meta|moneda }} · No incluye gastos fijos ni ahorros; la meta considera el flujo de préstamos.
             </p>
           </div>
           <form class="view-switch" method="get">
@@ -136,7 +140,7 @@
           </article>
 
           <article class="chart-section">
-            <h2>Distribucion de ingresos</h2>
+            <h2>Distribución de recursos</h2>
             <div class="pie-card">
               <div class="pie-chart">
                 <canvas id="ingresosChart"></canvas>
@@ -239,6 +243,8 @@
               <option value="Ingreso" {{ 'selected' if filtro_tipo == 'Ingreso' else '' }}>Ingresos</option>
               <option value="Gasto" {{ 'selected' if filtro_tipo == 'Gasto' else '' }}>Gastos</option>
               <option value="Ahorro" {{ 'selected' if filtro_tipo == 'Ahorro' else '' }}>Ahorros</option>
+              <option value="Cuenta por cobrar" {{ 'selected' if filtro_tipo == 'Cuenta por cobrar' else '' }}>Préstamos otorgados</option>
+              <option value="Restitución" {{ 'selected' if filtro_tipo == 'Restitución' else '' }}>Restituciones</option>
             </select>
           </label>
         </form>
@@ -287,7 +293,11 @@
                       {{ item.monto|moneda }}{% if item.es_compra_compartida %}<span class="shared-purchase-mark" title="Compra compartida">**</span>{% endif %}
                     </td>
                     <td>
-                      {% if item.id != "" %}
+                      {% if item.tipo in ['Cuenta por cobrar', 'Restitución'] and item.deuda_id is not none %}
+                        <a class="table-action" href="{{ url_for('editar_deuda', deuda_id=item.deuda_id) }}">Ver deuda</a>
+                      {% elif item.tipo in ['Cuenta por cobrar', 'Restitución'] %}
+                        <span class="hint-inline">Movimiento de deuda</span>
+                      {% elif item.id != "" %}
                         <a class="table-action" href="{{ url_for('editar', movimiento_id=item.id, volver_ciclo=ciclo_seleccionado, volver_q=busqueda, volver_tipo=filtro_tipo) }}">Editar</a>
                       {% else %}
                         <span class="hint-inline">Automatico</span>
@@ -331,6 +341,6 @@
     {% include "_categorias_datalist.html" %}
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.2.0"></script>
-    <script src="{{ url_for('static', filename='app.js', v='20261107-3') }}"></script>
+    <script src="{{ url_for('static', filename='app.js', v='20261107-5') }}"></script>
   </body>
 </html>
