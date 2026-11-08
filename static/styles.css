@@ -2492,3 +2492,21 @@ input:focus, select:focus { border-color: #4584eb; outline-color: #a7c8ff; }
   .variable-expenses-stats { grid-template-columns: minmax(0, 1fr); }
   .variable-stock-card { min-height: 0; }
 }
+
+/* Debt controls adapt to the width of their card, including half-width panels. */
+.debt-list { container: debt-cards / inline-size; }
+.debt-item { grid-template-columns: minmax(0, 1fr); min-width: 0; }
+.debt-item > div { min-width: 0; }
+.debt-payment { grid-template-columns: repeat(2, minmax(0, 1fr)); width: 100%; }
+.debt-payment button { grid-column: 1 / -1; white-space: normal; width: 100%; }
+.debt-item-actions { display: flex; flex-wrap: wrap; gap: 8px; width: 100%; }
+.debt-item-actions > * { flex: 1 1 100px; min-width: 0; }
+.debt-item-actions .table-action { align-items: center; display: inline-flex; }
+@container debt-cards (min-width: 800px) {
+  .debt-item { align-items: end; grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr) 110px; }
+  .debt-item-actions { flex-direction: column; }
+  .debt-item-actions > * { flex: 0 0 auto; }
+}
+@media (max-width: 380px) {
+  .debt-payment { grid-template-columns: minmax(0, 1fr); }
+}

@@ -6,7 +6,7 @@
           <strong>{{ item.categoria or "Sin categoria" }}</strong>
           <span>{{ item.fecha }} · {{ item.descripcion or "Sin descripcion" }}</span>
         </div>
-        <b class="{{ 'positive' if item.tipo == 'Ingreso' else 'saving' if item.tipo == 'Ahorro' else 'negative' }}">
+        <b class="{{ 'positive' if item.tipo in ['Ingreso', 'Restitución'] else 'saving' if item.tipo == 'Ahorro' else 'negative' }}">
           {{ item.monto|moneda }}
         </b>
       </li>
