@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Gastos fijos</title>
     <link rel="manifest" href="{{ url_for('static', filename='manifest.json') }}">
-    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css', v='20261107-9') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css', v='20261107-11') }}">
   </head>
   <body>
     {% include "_navigation.html" %}
@@ -115,7 +115,7 @@
                       <b class="{{ 'saving' if item.tipo == 'Ahorro' else 'negative' }}">{{ item.monto|moneda }}</b>
                     </div>
                     <div class="automation-actions">
-                      <span class="status status-ok">Confirmada</span>
+                      <span class="status status-ok">{{ 'Incluida en pago original' if item.cubierto_por_original else 'Confirmada' }}</span>
                       <a class="table-action" href="{{ url_for('editar_automatizacion', automatizacion_id=item.id) }}">Editar</a>
                     </div>
                   </div>
@@ -187,6 +187,13 @@
 
 
 
+      {% if segmentados %}
+        <section class="panel section-gap">
+          <div class="panel-header"><h2>Gastos fijos separados</h2><span class="hint-inline">Revisa los periodos pendientes de segmentar.</span></div>
+          <div class="automation-list">{% for item in segmentados %}<div class="automation-item"><div><strong>{{ item.descripcion or item.categoria }}</strong><span>Sus partes son gastos fijos independientes.</span></div><div class="automation-actions"><a class="table-action" href="{{ url_for('editar_automatizacion', automatizacion_id=item.id) }}">Ver historial y sugerencias</a></div></div>{% endfor %}</div>
+        </section>
+      {% endif %}
+
       {% if vencidas %}
         <section class="panel section-gap">
           <div class="panel-header">
@@ -217,7 +224,7 @@
           <h2>Gastos fijos del mes</h2>
           <span class="hint-inline">Las confirmadas ya aparecen como movimientos reales.</span>
         </div>
-        {% if automatizaciones %}
+        {% if vigentes or vencidas %}
           <div class="table-wrap">
             <table>
               <thead>
@@ -230,7 +237,7 @@
                 </tr>
               </thead>
               <tbody>
-                {% for item in automatizaciones %}
+                {% for item in automatizaciones if not item.segmentacion %}
                   <tr>
                     <td>{{ item.tipo }}</td>
                     <td>{{ item.descripcion or "Sin descripcion" }}</td>

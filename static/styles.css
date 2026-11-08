@@ -2527,3 +2527,11 @@ input:focus, select:focus { border-color: #4584eb; outline-color: #a7c8ff; }
   .cash-breakdown-row > input[name="sub_descripcion"],
   .cash-breakdown-row > input[name="sub_monto"] { grid-column: auto; grid-row: auto; }
 }
+
+.record-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.record-actions .status { font-size: .8rem; }
+.split-parts { display: grid; gap: 12px; }
+.split-part { border: 1px solid var(--line); border-radius: 10px; display: grid; gap: 12px; min-width: 0; padding: 16px; }
+.split-part legend { color: var(--primary-dark); font-weight: 700; padding: 0 6px; }
+.split-part button { justify-self: start; }
+.split-part button:disabled { cursor: not-allowed; opacity: .5; }

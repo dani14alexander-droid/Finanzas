@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Editar gasto fijo</title>
     <link rel="manifest" href="{{ url_for('static', filename='manifest.json') }}">
-    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css', v='20261107-9') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css', v='20261107-11') }}">
   </head>
   <body>
     {% include "_navigation.html" %}
@@ -14,7 +14,7 @@
       <section class="panel">
         <p class="eyebrow">Gastos fijos</p>
         <h1>Editar gasto fijo</h1>
-        <div class="panel section-gap">
+        <div class="panel section-gap" id="registros">
           <h2>Movimientos registrados</h2>
           <p><strong>{{ cantidad_registros }}</strong> registro{{ '' if cantidad_registros == 1 else 's' }} en <strong>{{ cantidad_periodos }}</strong> ciclo{{ '' if cantidad_periodos == 1 else 's' }}.</p>
           <p class="hint-inline">"Considerar anteriores" cuenta una cuota por ciclo y reconoce la misma descripcion aunque haya cambiado el monto.</p>
@@ -27,6 +27,7 @@
                     <th>Ciclo</th>
                     <th>Descripcion</th>
                     <th>Monto</th>
+                    <th>Acciones</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -36,6 +37,10 @@
                       <td>{{ registro.periodo_registro|periodo_legible }}</td>
                       <td>{{ registro.descripcion or registro.categoria }}</td>
                       <td>{{ registro.monto|moneda }}</td>
+                      <td><div class="record-actions">
+                        <a class="table-action" href="{{ url_for('editar_registro_fijo', automatizacion_id=registro.fijo_registro_id, movimiento_id=registro.id, volver_fijo=item.id, version=firma_registro_fijo(registro)) }}">Editar</a>
+                        {% if not registro.grupo_segmentacion %}<a class="table-action" href="{{ url_for('editar_registro_fijo', automatizacion_id=item.id, movimiento_id=registro.id, modo='segmentar', volver_fijo=item.id, version=firma_registro_fijo(registro)) }}">{{ 'Ver sugerencia' if plan_segmentacion else 'Segmentar' }}</a>{% else %}<span class="status status-ok">Segmentado</span>{% endif %}
+                      </div></td>
                     </tr>
                   {% endfor %}
                 </tbody>
@@ -45,6 +50,9 @@
             <p class="empty">Todavia no hay movimientos coincidentes registrados.</p>
           {% endif %}
         </div>
+        {% if plan_segmentacion %}
+          <p class="hint">Sugerencia para los registros sin segmentar: separarlos en {{ plan_segmentacion.partes|map(attribute='descripcion')|join(', ') }}. Puedes ajustar los valores de cada periodo antes de guardar.</p>
+        {% else %}
         <form method="post" class="form">
           <label>
             Tipo
@@ -92,7 +100,9 @@
             <button type="submit">Guardar cambios</button>
           </div>
         </form>
+        {% endif %}
 
+        {% if not plan_segmentacion %}
         <form
           method="post"
           action="{{ url_for('eliminar_automatizacion', automatizacion_id=item.id) }}"
@@ -101,6 +111,7 @@
         >
           <button type="submit" class="danger-button">Eliminar gasto fijo</button>
         </form>
+        {% endif %}
       </section>
     </main>
 

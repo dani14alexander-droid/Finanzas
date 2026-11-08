@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{{ 'Segmentar movimiento' if modo == 'segmentar' else 'Editar movimiento' }}</title>
+    <link rel="manifest" href="{{ url_for('static', filename='manifest.json') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css', v='20261107-11') }}">
+  </head>
+  <body>
+    {% include "_navigation.html" %}
+    <main class="container narrow">
+      <section class="panel">
+        <p class="eyebrow">Movimiento de gasto fijo · {{ periodo|periodo_legible }}</p>
+        <h1>{{ 'Segmentar movimiento' if modo == 'segmentar' else 'Editar movimiento' }}</h1>
+        <p class="hint">{{ movimiento.descripcion or movimiento.categoria }} · {{ movimiento.fecha|fecha_corta }} · {{ movimiento.monto|moneda }}</p>
+        <p class="hint">Los cambios se aplican únicamente a este registro. Se conservará como pagado en su periodo original.</p>
+        {% if error %}<p class="filter-error" role="alert">{{ error }}</p>{% endif %}
+        <form method="post" class="form" {% if modo == 'segmentar' %}data-fixed-split-form{% endif %}>
+          <input type="hidden" name="firma" value="{{ firma }}">
+          <input type="hidden" name="modo" value="{{ modo }}">
+          <input type="hidden" name="volver_fijo" value="{{ volver_id }}">
+          {% if modo == 'editar' %}
+            <label>Fecha <input type="date" name="fecha" value="{{ request.form.get('fecha', movimiento.fecha) }}" required></label>
+            <label>Categoría <input type="text" name="categoria" value="{{ request.form.get('categoria', movimiento.categoria) }}" list="{{ lista_categoria_para_tipo(fijo.tipo) }}" data-category-list required></label>
+            {% include "_categorias_datalist.html" %}
+            <label>Descripción <input type="text" name="descripcion" value="{{ request.form.get('descripcion', movimiento.descripcion) }}"></label>
+            <label>Monto <input type="number" name="monto" min="0.01" step="0.01" value="{{ request.form.get('monto', movimiento.monto) }}" required></label>
+          {% else %}
+            {% if tiene_plan %}
+              <p class="hint">Sugerencia basada en tu separación anterior. Ajusta los importes de este periodo; los demás registros y montos mensuales no cambiarán.</p>
+            {% else %}
+              <p class="hint">Las partes deben sumar {{ movimiento.monto|moneda }}. Se creará un gasto fijo independiente por cada parte; puedes definir su monto mensual por separado.</p>
+            {% endif %}
+            <div class="split-parts" data-fixed-split-list>
+              {% for parte in sugerencias %}
+                <fieldset class="split-part">
+                  <legend>Parte {{ loop.index }}</legend>
+                  <input type="hidden" name="parte_ticket" value="{{ parte.ticket_fijo }}">
+                  <label>Nombre <input type="text" name="parte_descripcion" value="{{ parte.descripcion }}" placeholder="Ej.: Entel teléfono" required></label>
+                  <label>Monto de este movimiento <input type="number" name="parte_monto" min="0.01" step="0.01" value="{{ parte.monto }}" data-split-amount required></label>
+                  {% if not tiene_plan %}<label>Monto mensual del nuevo gasto fijo <input type="number" name="parte_monto_fijo" min="0.01" step="0.01" value="{{ parte.monto_fijo or parte.monto }}" data-split-monthly required></label>{% endif %}
+                  {% if not tiene_plan %}<button type="button" class="link-button" data-remove-fixed-part>Quitar parte</button>{% endif %}
+                </fieldset>
+              {% endfor %}
+            </div>
+            <p class="hint-inline" data-split-feedback data-original="{{ movimiento.monto }}" aria-live="polite"></p>
+            {% if not tiene_plan %}
+              <button type="button" class="link-button" data-add-fixed-part>Agregar otra parte</button>
+              <template data-fixed-part-template><fieldset class="split-part"><legend>Nueva parte</legend><input type="hidden" name="parte_ticket" value=""><label>Nombre <input type="text" name="parte_descripcion" required></label><label>Monto de este movimiento <input type="number" name="parte_monto" min="0.01" step="0.01" data-split-amount required></label><label>Monto mensual del nuevo gasto fijo <input type="number" name="parte_monto_fijo" min="0.01" step="0.01" data-split-monthly required></label><button type="button" class="link-button" data-remove-fixed-part>Quitar parte</button></fieldset></template>
+            {% endif %}
+          {% endif %}
+          <div class="actions"><a class="link-button" href="{{ url_for('editar_automatizacion', automatizacion_id=volver_id, _anchor='registros') }}">Cancelar</a><button type="submit">{{ 'Guardar separación' if modo == 'segmentar' else 'Guardar movimiento' }}</button></div>
+        </form>
+      </section>
+    </main>
+    <script src="{{ url_for('static', filename='app.js', v='20261107-11') }}"></script>
+  </body>
+</html>

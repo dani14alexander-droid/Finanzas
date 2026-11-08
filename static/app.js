@@ -92,6 +92,51 @@ const initializeDateFields = (root = document) => {
 };
 initializeDateFields();
 
+document.querySelectorAll("[data-fixed-split-form]").forEach((form) => {
+  const list = form.querySelector("[data-fixed-split-list]");
+  const template = form.querySelector("[data-fixed-part-template]");
+  const feedback = form.querySelector("[data-split-feedback]");
+  const refreshTotal = () => {
+    if (!feedback || !list) return;
+    const total = Array.from(list.querySelectorAll("[data-split-amount]"))
+      .reduce((sum, input) => sum + Math.round((Number(input.value) || 0) * 100), 0);
+    const original = Math.round(Number(feedback.dataset.original) * 100);
+    const money = new Intl.NumberFormat("es-CL", { style: "currency", currency: "CLP", maximumFractionDigits: 2 });
+    feedback.textContent = `Suma de las partes: ${money.format(total / 100)} · Monto original: ${money.format(original / 100)}${total === original ? " · Los montos coinciden" : " · Ajusta la diferencia antes de guardar"}`;
+  };
+  const refreshRemoveButtons = () => {
+    const parts = list.querySelectorAll(".split-part");
+    parts.forEach((part) => {
+      const button = part.querySelector("[data-remove-fixed-part]");
+      if (button) button.disabled = parts.length <= 2;
+    });
+  };
+  form.querySelector("[data-add-fixed-part]")?.addEventListener("click", () => {
+    if (list.querySelectorAll(".split-part").length >= 10) return;
+    const part = template.content.firstElementChild.cloneNode(true);
+    list.append(part);
+    refreshRemoveButtons();
+    refreshTotal();
+    part.querySelector('input[name="parte_descripcion"]')?.focus();
+  });
+  list?.addEventListener("click", (event) => {
+    const button = event.target.closest("[data-remove-fixed-part]");
+    if (button && list.querySelectorAll(".split-part").length > 2) {
+      button.closest(".split-part").remove();
+      refreshRemoveButtons();
+      refreshTotal();
+    }
+  });
+  list?.addEventListener("input", (event) => {
+    const part = event.target.closest(".split-part");
+    const monthly = part?.querySelector("[data-split-monthly]");
+    if (event.target.matches("[data-split-monthly]")) event.target.dataset.edited = "true";
+    if (event.target.matches("[data-split-amount]") && monthly && !monthly.dataset.edited) monthly.value = event.target.value;
+    if (event.target.matches("[data-split-amount]")) refreshTotal();
+  });
+  if (list) { refreshRemoveButtons(); refreshTotal(); }
+});
+
 const categoryListsByType = {
   Ahorro: "categorias-ahorro",
   Debo: "categorias-debo",

@@ -2,6 +2,7 @@ from pathlib import Path
 from bisect import bisect_right
 from copy import deepcopy
 from datetime import date, datetime, timedelta
+from decimal import Decimal, InvalidOperation
 from functools import lru_cache, wraps
 from zoneinfo import ZoneInfo
 from io import BytesIO
@@ -9,6 +10,7 @@ from math import ceil
 import math
 import calendar
 import csv
+import hashlib
 import json
 import os
 import re
@@ -68,7 +70,7 @@ LINK_PATH = BASE_DIR / "link.txt"
 DB_LISTA = False
 COLUMNAS = [
     "fecha", "tipo", "categoria", "descripcion", "monto", "ticket_deuda",
-    "origen_deuda", "periodo_forzado", "ticket_movimiento",
+    "origen_deuda", "periodo_forzado", "ticket_movimiento", "ticket_fijo", "grupo_segmentacion",
 ]
 AUTOMATIZACION_COLUMNAS = [
     "tipo",
@@ -84,6 +86,9 @@ AUTOMATIZACION_COLUMNAS = [
     "vigencia_meses",
     "meses_pagados",
     "vigencia_desde",
+    "ticket_fijo",
+    "segmento_padre",
+    "segmentacion",
 ]
 DEUDA_COLUMNAS = [
     "fecha",
@@ -287,6 +292,9 @@ def asegurar_db():
             cursor.execute("ALTER TABLE automatizaciones ADD COLUMN IF NOT EXISTS vigencia_meses INTEGER NOT NULL DEFAULT 0")
             cursor.execute("ALTER TABLE automatizaciones ADD COLUMN IF NOT EXISTS meses_pagados INTEGER NOT NULL DEFAULT 0")
             cursor.execute("ALTER TABLE automatizaciones ADD COLUMN IF NOT EXISTS vigencia_desde TEXT NOT NULL DEFAULT ''")
+            cursor.execute("ALTER TABLE automatizaciones ADD COLUMN IF NOT EXISTS ticket_fijo TEXT NOT NULL DEFAULT ''")
+            cursor.execute("ALTER TABLE automatizaciones ADD COLUMN IF NOT EXISTS segmento_padre TEXT NOT NULL DEFAULT ''")
+            cursor.execute("ALTER TABLE automatizaciones ADD COLUMN IF NOT EXISTS segmentacion TEXT NOT NULL DEFAULT ''")
             cursor.execute(
                 """
                 CREATE TABLE IF NOT EXISTS deudas (
@@ -324,6 +332,8 @@ def asegurar_db():
             cursor.execute("ALTER TABLE movimientos ADD COLUMN IF NOT EXISTS origen_deuda TEXT NOT NULL DEFAULT ''")
             cursor.execute("ALTER TABLE movimientos ADD COLUMN IF NOT EXISTS periodo_forzado TEXT NOT NULL DEFAULT ''")
             cursor.execute("ALTER TABLE movimientos ADD COLUMN IF NOT EXISTS ticket_movimiento TEXT NOT NULL DEFAULT ''")
+            cursor.execute("ALTER TABLE movimientos ADD COLUMN IF NOT EXISTS ticket_fijo TEXT NOT NULL DEFAULT ''")
+            cursor.execute("ALTER TABLE movimientos ADD COLUMN IF NOT EXISTS grupo_segmentacion TEXT NOT NULL DEFAULT ''")
             cursor.execute("ALTER TABLE subgastos_efectivo ADD COLUMN IF NOT EXISTS fecha TEXT NOT NULL DEFAULT ''")
             cursor.execute("ALTER TABLE deudas ADD COLUMN IF NOT EXISTS modalidad TEXT NOT NULL DEFAULT ''")
             cursor.execute("ALTER TABLE deudas ADD COLUMN IF NOT EXISTS cuotas_total INTEGER NOT NULL DEFAULT 1")
@@ -473,7 +483,7 @@ def leer_movimientos():
         with conectar_db() as conexion:
             with conexion.cursor() as cursor:
                 cursor.execute(
-                    "SELECT fecha, tipo, categoria, descripcion, monto, ticket_deuda, origen_deuda, periodo_forzado, ticket_movimiento FROM movimientos ORDER BY id"
+                    "SELECT fecha, tipo, categoria, descripcion, monto, ticket_deuda, origen_deuda, periodo_forzado, ticket_movimiento, ticket_fijo, grupo_segmentacion FROM movimientos ORDER BY id"
                 )
                 movimientos = []
                 for indice, fila in enumerate(cursor.fetchall()):
@@ -541,8 +551,8 @@ def escribir_movimientos(movimientos):
                 cursor.execute("TRUNCATE movimientos RESTART IDENTITY")
                 cursor.executemany(
                     """
-                    INSERT INTO movimientos (fecha, tipo, categoria, descripcion, monto, ticket_deuda, origen_deuda, periodo_forzado, ticket_movimiento)
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    INSERT INTO movimientos (fecha, tipo, categoria, descripcion, monto, ticket_deuda, origen_deuda, periodo_forzado, ticket_movimiento, ticket_fijo, grupo_segmentacion)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                     """,
                     [
                         (
@@ -555,6 +565,8 @@ def escribir_movimientos(movimientos):
                             movimiento.get("origen_deuda", ""),
                             movimiento.get("periodo_forzado", ""),
                             movimiento.get("ticket_movimiento", ""),
+                            movimiento.get("ticket_fijo", ""),
+                            movimiento.get("grupo_segmentacion", ""),
                         )
                         for movimiento in movimientos
                     ],
@@ -578,8 +590,8 @@ def guardar_movimiento(movimiento):
             with conexion.cursor() as cursor:
                 cursor.execute(
                     """
-                    INSERT INTO movimientos (fecha, tipo, categoria, descripcion, monto, ticket_deuda, origen_deuda, periodo_forzado, ticket_movimiento)
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    INSERT INTO movimientos (fecha, tipo, categoria, descripcion, monto, ticket_deuda, origen_deuda, periodo_forzado, ticket_movimiento, ticket_fijo, grupo_segmentacion)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                     """,
                     (
                         movimiento.get("fecha", ""),
@@ -591,6 +603,8 @@ def guardar_movimiento(movimiento):
                         movimiento.get("origen_deuda", ""),
                         movimiento.get("periodo_forzado", ""),
                         movimiento.get("ticket_movimiento", ""),
+                        movimiento.get("ticket_fijo", ""),
+                        movimiento.get("grupo_segmentacion", ""),
                     ),
                 )
         return movimiento["ticket_movimiento"]
@@ -703,7 +717,7 @@ def leer_automatizaciones():
                     """
                     SELECT tipo, categoria, descripcion, monto, dia_mes, activo,
                            ultimo_confirmado, ticket_ultimo, ultimo_anulado, razon_anulado,
-                           vigencia_meses, meses_pagados, vigencia_desde
+                           vigencia_meses, meses_pagados, vigencia_desde, ticket_fijo, segmento_padre, segmentacion
                     FROM automatizaciones
                     ORDER BY id
                     """
@@ -757,9 +771,9 @@ def escribir_automatizaciones(automatizaciones):
                     INSERT INTO automatizaciones (
                         tipo, categoria, descripcion, monto, dia_mes, activo,
                         ultimo_confirmado, ticket_ultimo, ultimo_anulado, razon_anulado,
-                        vigencia_meses, meses_pagados, vigencia_desde
+                        vigencia_meses, meses_pagados, vigencia_desde, ticket_fijo, segmento_padre, segmentacion
                     )
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                     """,
                     [
                         (
@@ -776,6 +790,9 @@ def escribir_automatizaciones(automatizaciones):
                             max(int(item.get("vigencia_meses") or 0), 0),
                             max(int(item.get("meses_pagados") or 0), 0),
                             item.get("vigencia_desde", ""),
+                            item.get("ticket_fijo", ""),
+                            item.get("segmento_padre", ""),
+                            item.get("segmentacion", ""),
                         )
                         for item in automatizaciones
                     ],
@@ -1863,6 +1880,8 @@ def mismo_texto(valor, otro):
 
 
 def movimiento_coincide_automatizacion(movimiento, automatizacion):
+    if movimiento.get("ticket_fijo"):
+        return movimiento["ticket_fijo"] == automatizacion.get("ticket_fijo")
     descripcion = automatizacion.get("descripcion", "").strip()
     descripcion_coincide = (
         not descripcion
@@ -1913,6 +1932,8 @@ def periodos_movimientos_ciclos(movimientos):
 
 
 def movimiento_coincide_anteriores(movimiento, automatizacion):
+    if movimiento.get("ticket_fijo"):
+        return movimiento["ticket_fijo"] == automatizacion.get("ticket_fijo")
     if (
         movimiento.get("tipo") != automatizacion.get("tipo")
         or not mismo_texto(movimiento.get("categoria"), automatizacion.get("categoria"))
@@ -2038,6 +2059,8 @@ def finalizada_en_periodo(automatizacion, movimientos, periodo, periodos=None, p
 
 
 def cuenta_automatizacion_en_periodo(automatizacion, movimientos, periodo, periodos=None, periodos_ciclo=None, vencida=None):
+    if automatizacion.get("segmentacion"):
+        return False
     if esta_anulada(automatizacion, periodo):
         return False
     if periodos is None:
@@ -2047,6 +2070,33 @@ def cuenta_automatizacion_en_periodo(automatizacion, movimientos, periodo, perio
     if vencida:
         return finalizada_en_periodo(automatizacion, movimientos, periodo, periodos, periodos_ciclo)
     return bool(automatizacion.get("activo"))
+
+
+def padres_de_segmentacion(automatizaciones):
+    padres = {}
+    for item in automatizaciones:
+        try:
+            plan = json.loads(item.get("segmentacion") or "{}")
+            clave = plan.get("clave") if isinstance(plan, dict) else None
+        except (ValueError, TypeError):
+            clave = None
+        if clave:
+            padres[clave] = item
+    return padres
+
+
+def cubierto_por_pago_original(item, padres, movimientos, periodos_ciclo, periodo):
+    if esta_anulada(item, periodo):
+        return False
+    padre = padres.get(item.get("segmento_padre"))
+    if not padre:
+        return False
+    existe = any(
+        ciclo == periodo and movimiento_coincide_automatizacion(movimiento, padre)
+        for movimiento, ciclo in zip(movimientos, periodos_ciclo)
+    )
+    final_guardado = plan_segmentacion(padre).get("cuota_final_periodo") == periodo
+    return bool(existe and (item.get("activo") or final_guardado or finalizada_en_periodo(padre, movimientos, periodo, periodos_ciclo=periodos_ciclo)))
 
 
 def siguiente_periodo_ciclo(periodo):
@@ -2101,6 +2151,8 @@ def sincronizar_automatizaciones_confirmadas():
     hubo_cambios_movimientos = False
 
     for item in automatizaciones:
+        if item.get("segmentacion"):
+            continue
         if int(item.get("vigencia_meses") or 0) <= 0 or item.get("vigencia_desde"):
             continue
         periodos_previos = [
@@ -2114,6 +2166,8 @@ def sincronizar_automatizaciones_confirmadas():
         hubo_cambios = True
 
     for item in automatizaciones:
+        if item.get("segmentacion"):
+            continue
         if esta_anulada(item, periodo):
             continue
 
@@ -2166,12 +2220,68 @@ def sincronizar_automatizaciones_confirmadas():
             item["activo"] = False
             hubo_cambios = True
 
+    padres = padres_de_segmentacion(automatizaciones)
+    for item in automatizaciones:
+        if item.get("ultimo_confirmado") != periodo:
+            item["cubierto_por_original"] = cubierto_por_pago_original(item, padres, movimientos, periodos_ciclo, periodo)
+            if item["cubierto_por_original"]:
+                item["cuenta_en_periodo"] = True
+
     if hubo_cambios:
         escribir_automatizaciones(automatizaciones)
     if hubo_cambios_movimientos:
         escribir_movimientos(movimientos)
 
     return automatizaciones
+
+
+def plan_segmentacion(item):
+    try:
+        plan = json.loads(item.get("segmentacion") or "{}")
+        return plan if isinstance(plan, dict) else {}
+    except (ValueError, TypeError):
+        return {}
+
+
+@invalida_lecturas
+def guardar_cambio_registro_fijo(movimientos, automatizaciones, movimiento_id, automatizacion_id,
+                                original_movimiento, original_fijo, nuevas_partes, nuevos_fijos):
+    """Guarda el registro y sus gastos fijos en una sola transacción en PostgreSQL."""
+    if usar_base_datos():
+        asegurar_db()
+        with conectar_db() as conexion:
+            with conexion.cursor() as cursor:
+                cursor.execute("LOCK TABLE movimientos, automatizaciones IN EXCLUSIVE MODE")
+                cursor.execute("SELECT id, fecha, tipo, categoria, descripcion, monto, ticket_deuda, origen_deuda, periodo_forzado, ticket_movimiento, ticket_fijo, grupo_segmentacion FROM movimientos ORDER BY id LIMIT 1 OFFSET %s FOR UPDATE", (movimiento_id,))
+                fila_mov = cursor.fetchone()
+                cursor.execute("SELECT id, tipo, categoria, descripcion, monto, ticket_fijo, segmentacion FROM automatizaciones ORDER BY id LIMIT 1 OFFSET %s FOR UPDATE", (automatizacion_id,))
+                fila_fijo = cursor.fetchone()
+                def coincide(fila, original, campos):
+                    return fila and all((fila.get(campo) or "") == (original.get(campo) or "") for campo in campos)
+                if not coincide(fila_mov, original_movimiento, ("fecha", "tipo", "categoria", "descripcion", "monto", "ticket_deuda", "origen_deuda", "periodo_forzado", "ticket_movimiento", "ticket_fijo", "grupo_segmentacion")) or not coincide(fila_fijo, original_fijo, ("tipo", "categoria", "descripcion", "monto", "ticket_fijo", "segmentacion")):
+                    raise ValueError("El registro cambió mientras lo editabas. Vuelve a abrirlo.")
+
+                def valores_movimiento(item):
+                    return [float(item.get(columna) or 0) if columna == "monto" else item.get(columna, "") for columna in COLUMNAS]
+                def valores_fijo(item):
+                    return [float(item.get(columna) or 0) if columna == "monto" else int(item.get(columna) or (1 if columna == "dia_mes" else 0)) if columna in {"dia_mes", "vigencia_meses", "meses_pagados"} else bool(item.get(columna, True)) if columna == "activo" else item.get(columna, "") for columna in AUTOMATIZACION_COLUMNAS]
+                cursor.execute("UPDATE movimientos SET " + ", ".join(f"{c} = %s" for c in COLUMNAS) + " WHERE id = %s", valores_movimiento(movimientos[movimiento_id]) + [fila_mov["id"]])
+                if nuevas_partes:
+                    cursor.executemany("INSERT INTO movimientos (" + ", ".join(COLUMNAS) + ") VALUES (" + ", ".join(["%s"] * len(COLUMNAS)) + ")", [valores_movimiento(item) for item in nuevas_partes])
+                cursor.execute("UPDATE automatizaciones SET " + ", ".join(f"{c} = %s" for c in AUTOMATIZACION_COLUMNAS) + " WHERE id = %s", valores_fijo(automatizaciones[automatizacion_id]) + [fila_fijo["id"]])
+                if nuevos_fijos:
+                    cursor.executemany("INSERT INTO automatizaciones (" + ", ".join(AUTOMATIZACION_COLUMNAS) + ") VALUES (" + ", ".join(["%s"] * len(AUTOMATIZACION_COLUMNAS)) + ")", [valores_fijo(item) for item in nuevos_fijos])
+        return
+    asegurar_csv()
+    respaldo_movimientos = CSV_PATH.read_bytes()
+    respaldo_fijos = AUTOMATIZACIONES_PATH.read_bytes()
+    try:
+        escribir_movimientos(movimientos + nuevas_partes)
+        escribir_automatizaciones(automatizaciones + nuevos_fijos)
+    except Exception:
+        CSV_PATH.write_bytes(respaldo_movimientos)
+        AUTOMATIZACIONES_PATH.write_bytes(respaldo_fijos)
+        raise
 
 
 def esta_anulada(item, periodo=None):
@@ -2584,15 +2694,21 @@ def datos_gastos_variables(datos_dashboard, vista="diaria"):
     periodo = clave_ciclo(hoy, todos_movimientos)
     todas_las_automatizaciones = leer_automatizaciones()
     periodos_ciclo = periodos_movimientos_ciclos(todos_movimientos)
+    padres = padres_de_segmentacion(todas_las_automatizaciones)
     automatizaciones_del_periodo = [
         item for item in todas_las_automatizaciones
         if cuenta_automatizacion_en_periodo(item, todos_movimientos, periodo, periodos_ciclo=periodos_ciclo)
+        or cubierto_por_pago_original(item, padres, todos_movimientos, periodos_ciclo, periodo)
     ]
     automatizaciones_gasto = [
         item
         for item in automatizaciones_del_periodo
         if item.get("tipo") == "Gasto"
     ]
+    automatizaciones_gasto.extend(
+        item for item in todas_las_automatizaciones
+        if item.get("segmentacion") and item.get("tipo") == "Gasto"
+    )
     compromiso_mensual = sum(
         float(item.get("monto") or 0)
         for item in automatizaciones_del_periodo
@@ -2803,7 +2919,7 @@ def calcular_planificacion():
     for item in automatizaciones:
         if not item["activo"] or esta_anulada(item, periodo):
             continue
-        if item.get("ultimo_confirmado") == periodo:
+        if item.get("ultimo_confirmado") == periodo or item.get("cubierto_por_original"):
             continue
         existe_movimiento = any(
             (fecha := fecha_movimiento(movimiento.get("fecha", "")))
@@ -2853,7 +2969,7 @@ def calcular_planificacion():
             continue
         categoria = (item.get("categoria") or "").strip().lower()
         es_fijo = tipo == "Gasto" and any(
-            automatizacion.get("cuenta_en_periodo")
+            (automatizacion.get("cuenta_en_periodo") or automatizacion.get("segmentacion"))
             and movimiento_coincide_automatizacion(item, automatizacion)
             for automatizacion in automatizaciones
         )
@@ -3074,10 +3190,12 @@ def macrocategorias():
     movimientos_fijos = leer_movimientos()
     periodo_fijos = periodo_actual()
     periodos_fijos = periodos_movimientos_ciclos(movimientos_fijos)
+    automatizaciones_fijos = leer_automatizaciones()
+    padres_fijos = padres_de_segmentacion(automatizaciones_fijos)
     gastos_fijos = [
         item
-        for item in leer_automatizaciones()
-        if item.get("tipo") == "Gasto" and cuenta_automatizacion_en_periodo(item, movimientos_fijos, periodo_fijos, periodos_ciclo=periodos_fijos)
+        for item in automatizaciones_fijos
+        if item.get("tipo") == "Gasto" and (cuenta_automatizacion_en_periodo(item, movimientos_fijos, periodo_fijos, periodos_ciclo=periodos_fijos) or cubierto_por_pago_original(item, padres_fijos, movimientos_fijos, periodos_fijos, periodo_fijos))
     ]
     return render_template(
         "macrocategorias.html",
@@ -3213,6 +3331,8 @@ def editar(movimiento_id):
             "ticket_movimiento": ticket_movimiento,
             "ticket_deuda": movimiento.get("ticket_deuda", ""),
             "origen_deuda": movimiento.get("origen_deuda", ""),
+                "ticket_fijo": movimiento.get("ticket_fijo", ""),
+                "grupo_segmentacion": movimiento.get("grupo_segmentacion", ""),
         }
         subgastos = subgastos_desde_formulario(movimientos[movimiento_id]["fecha"])
         if sum(item["monto"] for item in subgastos) > movimientos[movimiento_id]["monto"]:
@@ -3368,19 +3488,21 @@ def automatizacion():
         ),
     )
     periodo = periodo_actual()
-    vigentes = [item for item in automatizaciones if not item.get("vigencia_vencida")]
-    vencidas = [item for item in automatizaciones if item.get("vigencia_vencida")]
+    segmentados = [item for item in automatizaciones if item.get("segmentacion")]
+    vigentes = [item for item in automatizaciones if not item.get("segmentacion") and not item.get("vigencia_vencida")]
+    vencidas = [item for item in automatizaciones if not item.get("segmentacion") and item.get("vigencia_vencida")]
     pendientes = [
         item
         for item in vigentes
         if item["activo"]
         and item.get("ultimo_confirmado") != periodo
+        and not item.get("cubierto_por_original")
         and not esta_anulada(item, periodo)
     ]
     confirmadas = [
         item
         for item in vigentes
-        if item["activo"] and item.get("ultimo_confirmado") == periodo
+        if item["activo"] and (item.get("ultimo_confirmado") == periodo or item.get("cubierto_por_original"))
     ]
     anuladas = [
         item
@@ -3417,6 +3539,7 @@ def automatizacion():
         automatizaciones=automatizaciones,
         vigentes=vigentes,
         vencidas=vencidas,
+        segmentados=segmentados,
         candidatos_recuperar=candidatos_recuperar,
         pendientes=pendientes,
         confirmadas=confirmadas,
@@ -3499,6 +3622,7 @@ def confirmar_automatizacion(automatizacion_id):
             "descripcion": descripcion,
             "monto": item["monto"],
             "periodo_forzado": periodo_forzado,
+            "ticket_fijo": item.get("ticket_fijo", ""),
         }
     )
     item["ultimo_confirmado"] = periodo_forzado or periodo_movimiento_ciclo(fecha, movimientos) or periodo
@@ -3669,13 +3793,18 @@ def editar_automatizacion(automatizacion_id):
 
     item["meses_pagados"] = item.get("meses_pagados_actuales", item.get("meses_pagados", 0))
     movimientos = leer_movimientos()
+    plan = plan_segmentacion(item)
+    hijos = {fijo.get("ticket_fijo"): fijo for fijo in automatizaciones if fijo.get("segmento_padre") == plan.get("clave") and fijo.get("ticket_fijo")}
     registros = [
         {
             **movimiento,
             "periodo_registro": periodo_item_ciclo(movimiento, movimientos),
+            "fijo_registro_id": hijos[movimiento["ticket_fijo"]]["id"] if movimiento.get("grupo_segmentacion") == plan.get("clave") and movimiento.get("ticket_fijo") in hijos else automatizacion_id,
+            "segmentado": bool(plan.get("clave") and movimiento.get("grupo_segmentacion") == plan.get("clave")),
         }
         for movimiento in movimientos
         if movimiento_coincide_anteriores(movimiento, item)
+        or (plan.get("clave") and movimiento.get("grupo_segmentacion") == plan["clave"])
     ]
     registros.sort(key=lambda movimiento: movimiento.get("fecha", ""), reverse=True)
     periodos_registrados = {registro["periodo_registro"] for registro in registros}
@@ -3685,7 +3814,143 @@ def editar_automatizacion(automatizacion_id):
         registros=registros,
         cantidad_registros=len(registros),
         cantidad_periodos=len(periodos_registrados),
+        plan_segmentacion=plan,
+        firma_registro_fijo=firma_registro_fijo,
     )
+
+
+def firma_registro_fijo(movimiento):
+    campos = [movimiento.get(nombre, "") for nombre in ("fecha", "tipo", "categoria", "descripcion", "monto", "ticket_deuda", "origen_deuda", "periodo_forzado", "ticket_movimiento", "ticket_fijo", "grupo_segmentacion")]
+    return hashlib.sha256(json.dumps(campos, ensure_ascii=False).encode("utf-8")).hexdigest()
+
+
+def monto_registro(valor):
+    try:
+        monto = Decimal(str(valor))
+        if not monto.is_finite() or monto <= 0 or monto != monto.quantize(Decimal("0.01")):
+            return None
+        return monto
+    except (InvalidOperation, ValueError):
+        return None
+
+
+@app.route("/automatizacion/<int:automatizacion_id>/registro/<int:movimiento_id>", methods=["GET", "POST"])
+def editar_registro_fijo(automatizacion_id, movimiento_id):
+    automatizaciones = sincronizar_automatizaciones_confirmadas()
+    movimientos = leer_movimientos()
+    if not (0 <= automatizacion_id < len(automatizaciones) and 0 <= movimiento_id < len(movimientos)):
+        return redirect(url_for("automatizacion"))
+    fijo = automatizaciones[automatizacion_id]
+    movimiento = movimientos[movimiento_id]
+    if request.args.get("version") and request.args["version"] != firma_registro_fijo(movimiento):
+        return Response("Este registro cambió. Vuelve a abrir el historial antes de editarlo.", status=409)
+    volver_id = request.values.get("volver_fijo", automatizacion_id, type=int)
+    if not (0 <= volver_id < len(automatizaciones)):
+        volver_id = automatizacion_id
+    plan = plan_segmentacion(fijo)
+    huerfano = bool(
+        plan.get("clave") and movimiento.get("grupo_segmentacion") == plan["clave"]
+        and not any(item.get("ticket_fijo") == movimiento.get("ticket_fijo") for item in automatizaciones if item.get("ticket_fijo"))
+    )
+    if not movimiento_coincide_anteriores(movimiento, fijo) and not huerfano:
+        return Response("Este movimiento ya no corresponde al gasto fijo. Vuelve a abrir el historial.", status=409)
+    periodo = periodo_item_ciclo(movimiento, movimientos)
+    if not periodo:
+        return Response("El movimiento no tiene una fecha válida para identificar su periodo.", status=400)
+    modo = request.values.get("modo", "editar")
+    if modo not in {"editar", "segmentar"}:
+        modo = "editar"
+    if modo == "segmentar" and movimiento.get("grupo_segmentacion"):
+        return Response("Esta parte ya está segmentada. Puedes editarla individualmente.", status=400)
+
+    partes = plan.get("partes", []) if isinstance(plan.get("partes"), list) else []
+    sugerencias = [{"descripcion": parte.get("descripcion", ""), "monto": parte.get("monto", ""), "ticket_fijo": parte.get("ticket_fijo", "")} for parte in partes]
+    if not sugerencias:
+        sugerencias = [{"descripcion": "", "monto": "", "ticket_fijo": ""}, {"descripcion": "", "monto": "", "ticket_fijo": ""}]
+    error = None
+    if request.method == "POST":
+        if request.form.get("firma") != firma_registro_fijo(movimiento):
+            return Response("Este registro cambió. Vuelve a abrirlo antes de guardar.", status=409)
+        original_fijo = fijo.copy()
+        original_movimiento = movimiento.copy()
+        nuevos_fijos = []
+        nuevas_partes = []
+        fijo["ticket_fijo"] = fijo.get("ticket_fijo") or uuid.uuid4().hex
+        if modo == "editar":
+            monto = monto_registro(request.form.get("monto", ""))
+            fecha = request.form.get("fecha", "").strip()
+            categoria = request.form.get("categoria", "").strip()
+            descripcion = request.form.get("descripcion", "").strip()
+            if not monto or not fecha_movimiento(fecha) or not categoria:
+                error = "Ingresa una fecha válida, una categoría y un monto positivo."
+            elif movimiento.get("ticket_deuda"):
+                error = "Este movimiento está vinculado a una deuda; edítalo desde la sección Deudas."
+            else:
+                ticket = movimiento.get("ticket_movimiento") or uuid.uuid4().hex
+                detalles = leer_subgastos_efectivo(ticket)
+                if sum(Decimal(str(detalle["monto"])) for detalle in detalles) > monto:
+                    error = "El monto no puede ser menor que el total de los subgastos registrados."
+                elif detalles and categoria.casefold() != (movimiento.get("categoria") or "").casefold():
+                    error = "Conserva la categoría para mantener los subgastos existentes."
+                else:
+                    movimiento.update({"fecha": fecha, "categoria": categoria, "descripcion": descripcion, "monto": float(monto), "ticket_movimiento": ticket, "ticket_fijo": movimiento.get("ticket_fijo", "") if huerfano else fijo["ticket_fijo"], "periodo_forzado": periodo})
+        else:
+            nombres = request.form.getlist("parte_descripcion")
+            montos = request.form.getlist("parte_monto")
+            fijos_montos = request.form.getlist("parte_monto_fijo")
+            tickets = request.form.getlist("parte_ticket")
+            sugerencias = [{"descripcion": nombre.strip(), "monto": montos[i] if i < len(montos) else "", "ticket_fijo": tickets[i] if i < len(tickets) else "", "monto_fijo": fijos_montos[i] if i < len(fijos_montos) else ""} for i, nombre in enumerate(nombres)]
+            partes_validas = [(parte, monto_registro(parte["monto"])) for parte in sugerencias]
+            tiene_subgastos = bool(leer_subgastos_efectivo(movimiento["ticket_movimiento"])) if movimiento.get("ticket_movimiento") else False
+            if not 2 <= len(partes_validas) <= 10 or any(not parte["descripcion"] or monto is None for parte, monto in partes_validas):
+                error = "Agrega entre dos y diez partes, cada una con nombre y monto positivo."
+            elif len({parte["descripcion"].casefold() for parte, _ in partes_validas}) != len(partes_validas):
+                error = "Cada parte debe tener un nombre distinto."
+            elif sum(monto for _, monto in partes_validas) != Decimal(str(movimiento["monto"])):
+                error = "La suma de las partes debe ser igual al monto original del movimiento."
+            elif movimiento.get("ticket_deuda") or tiene_subgastos:
+                error = "Este movimiento tiene una deuda o subgastos vinculados y no se puede segmentar aquí."
+            elif movimiento.get("ticket_movimiento") and any(deuda.get("ticket_gasto_asociado") == movimiento["ticket_movimiento"] for deuda in leer_deudas()):
+                error = "Este movimiento tiene una compra compartida vinculada y no se puede segmentar aquí."
+            elif plan and ([parte["ticket_fijo"] for parte, _ in partes_validas] != [parte.get("ticket_fijo") for parte in partes] or any(not any(hijo.get("ticket_fijo") == parte["ticket_fijo"] and hijo.get("segmento_padre") == plan.get("clave") for hijo in automatizaciones) for parte, _ in partes_validas)):
+                error = "La separación guardada cambió o falta uno de sus gastos fijos. Vuelve al historial para revisarla."
+            elif not plan and any(monto_registro(parte["monto_fijo"]) is None for parte, _ in partes_validas):
+                error = "Indica un monto mensual positivo para cada nuevo gasto fijo."
+            elif not plan and any(any(mismo_texto(existente.get("descripcion"), parte["descripcion"]) and mismo_texto(existente.get("categoria"), fijo["categoria"]) and existente.get("tipo") == fijo["tipo"] for existente in automatizaciones) for parte, _ in partes_validas):
+                error = "Ya existe un gasto fijo con uno de esos nombres y categoría. Usa nombres distintos para evitar duplicados."
+            else:
+                clave = plan.get("clave") or uuid.uuid4().hex
+                if not plan:
+                    partes = []
+                    for parte, monto in partes_validas:
+                        ticket_fijo = uuid.uuid4().hex
+                        partes.append({"ticket_fijo": ticket_fijo, "descripcion": parte["descripcion"], "monto": str(monto)})
+                        vigencia = int(fijo.get("vigencia_meses") or 0)
+                        nuevos_fijos.append({"tipo": fijo["tipo"], "categoria": fijo["categoria"], "descripcion": parte["descripcion"], "monto": float(monto_registro(parte["monto_fijo"])), "dia_mes": fijo["dia_mes"], "activo": bool(fijo.get("activo")), "ultimo_confirmado": "", "ticket_ultimo": "", "ultimo_anulado": "", "razon_anulado": "", "vigencia_meses": vigencia, "meses_pagados": int(fijo.get("meses_pagados_actuales") or fijo.get("meses_pagados") or 0), "vigencia_desde": siguiente_periodo_ciclo(periodo_actual()) if vigencia else "", "ticket_fijo": ticket_fijo, "segmento_padre": clave, "segmentacion": ""})
+                else:
+                    partes = [{**parte_guardada, "monto": str(monto)} for parte_guardada, (_, monto) in zip(partes, partes_validas)]
+                plan_guardado = {**plan, "clave": clave, "partes": partes}
+                if not plan and fijo.get("vigencia_vencida") and fijo.get("cuenta_en_periodo"):
+                    plan_guardado["cuota_final_periodo"] = periodo_actual()
+                fijo["segmentacion"] = json.dumps(plan_guardado, ensure_ascii=False)
+                fijo["activo"] = False
+                for indice, ((parte, monto), vinculada) in enumerate(zip(partes_validas, partes)):
+                    fragmento = {columna: movimiento.get(columna, "") for columna in COLUMNAS}
+                    fragmento.update({"descripcion": parte["descripcion"], "monto": float(monto), "periodo_forzado": periodo, "ticket_fijo": vinculada["ticket_fijo"], "grupo_segmentacion": clave, "ticket_movimiento": (movimiento.get("ticket_movimiento") or uuid.uuid4().hex) if indice == 0 else uuid.uuid4().hex})
+                    if indice == 0:
+                        movimientos[movimiento_id] = fragmento
+                    else:
+                        nuevas_partes.append(fragmento)
+        if not error:
+            if modo == "editar":
+                movimientos[movimiento_id] = movimiento
+            automatizaciones[automatizacion_id] = fijo
+            try:
+                guardar_cambio_registro_fijo(movimientos, automatizaciones, movimiento_id, automatizacion_id, original_movimiento, original_fijo, nuevas_partes, nuevos_fijos)
+            except ValueError as exc:
+                return Response(str(exc), status=409)
+            return redirect(url_for("editar_automatizacion", automatizacion_id=volver_id, _anchor="registros"))
+    return render_template("editar_registro_fijo.html", fijo=fijo, movimiento=movimiento, periodo=periodo, modo=modo, sugerencias=sugerencias, tiene_plan=bool(plan), firma=firma_registro_fijo(movimiento), volver_id=volver_id, error=error), (400 if error else 200)
 
 
 @app.route("/automatizacion/eliminar/<int:automatizacion_id>", methods=["POST"])
