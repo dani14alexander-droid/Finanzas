@@ -33,7 +33,7 @@
                   {% for registro in registros %}
                     <tr>
                       <td>{{ registro.fecha|fecha_corta }}</td>
-                      <td>{{ registro.periodo_registro }}</td>
+                      <td>{{ registro.periodo_registro|periodo_legible }}</td>
                       <td>{{ registro.descripcion or registro.categoria }}</td>
                       <td>{{ registro.monto|moneda }}</td>
                     </tr>

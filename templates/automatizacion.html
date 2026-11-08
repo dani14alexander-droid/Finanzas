@@ -19,7 +19,7 @@
         </div>
         <div class="date-card">
           <span>Periodo actual</span>
-          <strong>{{ periodo }}</strong>
+          <strong>{{ periodo|periodo_legible }}</strong>
           <small>Confirma cada item para registrarlo.</small>
         </div>
       </section>
@@ -162,7 +162,7 @@
                   <dialog class="reason-dialog" id="anular-{{ item.id }}">
                     <form method="post" action="{{ url_for('anular_automatizacion', automatizacion_id=item.id) }}">
                       <div>
-                        <p class="eyebrow">Anular {{ periodo }}</p>
+                        <p class="eyebrow">Anular {{ periodo|periodo_legible }}</p>
                         <h2>{{ item.descripcion or item.categoria or "Gasto fijo" }}</h2>
                         <span>{{ item.tipo }} · {{ item.monto|moneda }}</span>
                       </div>

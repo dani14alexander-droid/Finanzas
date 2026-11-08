@@ -1575,6 +1575,16 @@ def fecha_corta(valor):
     return ""
 
 
+def periodo_legible(valor):
+    valor = str(valor or "")
+    fecha = fecha_movimiento(valor)
+    if fecha:
+        return fecha_corta(fecha)
+    if re.fullmatch(r"\d{4}-\d{2}", valor):
+        return f"{valor[5:7]}-{valor[:4]}"
+    return valor
+
+
 def mes_dominante(inicio, fin):
     dias_por_mes = {}
     actual = inicio
@@ -1723,6 +1733,7 @@ def moneda(valor):
 
 app.jinja_env.filters["moneda"] = moneda
 app.jinja_env.filters["fecha_corta"] = fecha_corta
+app.jinja_env.filters["periodo_legible"] = periodo_legible
 
 
 def tooltip_operaciones(items, titulo):
@@ -1865,8 +1876,9 @@ def movimiento_coincide_automatizacion(movimiento, automatizacion):
     )
 
 
-def periodos_movimiento_automatizacion(automatizacion, movimientos):
-    periodos_ciclo = periodos_movimientos_ciclos(movimientos)
+def periodos_movimiento_automatizacion(automatizacion, movimientos, periodos_ciclo=None):
+    if periodos_ciclo is None:
+        periodos_ciclo = periodos_movimientos_ciclos(movimientos)
     return sorted(
         {
             periodo
@@ -1986,15 +1998,55 @@ def candidatos_recuperar_automatizaciones(movimientos, automatizaciones):
     )
 
 
-def estado_vigencia_automatizacion(automatizacion, movimientos):
+def estado_vigencia_automatizacion(automatizacion, movimientos, periodos=None):
     vigencia = max(int(automatizacion.get("vigencia_meses") or 0), 0)
     meses_base = max(int(automatizacion.get("meses_pagados") or 0), 0)
     desde = automatizacion.get("vigencia_desde", "")
-    periodos = periodos_movimiento_automatizacion(automatizacion, movimientos)
+    if periodos is None:
+        periodos = periodos_movimiento_automatizacion(automatizacion, movimientos)
     posteriores = [mes for mes in periodos if desde and mes >= desde]
     meses_pagados = meses_base + len(posteriores)
     vencida = bool(vigencia and meses_pagados >= vigencia)
     return meses_pagados, vencida
+
+
+def finalizada_en_periodo(automatizacion, movimientos, periodo, periodos=None, periodos_ciclo=None):
+    """La última cuota cuenta en el ciclo en que se registró."""
+    vigencia = max(int(automatizacion.get("vigencia_meses") or 0), 0)
+    if not vigencia or not periodo:
+        return False
+    if periodos is None:
+        periodos = periodos_movimiento_automatizacion(automatizacion, movimientos, periodos_ciclo)
+    base = max(int(automatizacion.get("meses_pagados") or 0), 0)
+    desde = automatizacion.get("vigencia_desde") or ""
+    if periodo not in periodos and desde and periodo < desde and base == vigencia:
+        periodos = sorted({
+            ciclo for movimiento, ciclo in zip(movimientos, periodos_ciclo if periodos_ciclo is not None else periodos_movimientos_ciclos(movimientos))
+            if ciclo and movimiento_coincide_anteriores(movimiento, automatizacion)
+        })
+    if periodo not in periodos:
+        return False
+    if desde and periodo >= desde:
+        anteriores = base + sum(desde <= registrado < periodo for registrado in periodos)
+        if desde == periodo and base == vigencia:
+            return sum(registrado < periodo for registrado in periodos) < vigencia
+        return anteriores < vigencia <= anteriores + 1
+    # Al considerar movimientos anteriores, la base puede incluir este ciclo.
+    if desde and periodo < desde and base == vigencia:
+        return sum(registrado < periodo for registrado in periodos) < vigencia
+    return False
+
+
+def cuenta_automatizacion_en_periodo(automatizacion, movimientos, periodo, periodos=None, periodos_ciclo=None, vencida=None):
+    if esta_anulada(automatizacion, periodo):
+        return False
+    if periodos is None:
+        periodos = periodos_movimiento_automatizacion(automatizacion, movimientos, periodos_ciclo)
+    if vencida is None:
+        _, vencida = estado_vigencia_automatizacion(automatizacion, movimientos, periodos)
+    if vencida:
+        return finalizada_en_periodo(automatizacion, movimientos, periodo, periodos, periodos_ciclo)
+    return bool(automatizacion.get("activo"))
 
 
 def siguiente_periodo_ciclo(periodo):
@@ -2103,10 +2155,13 @@ def sincronizar_automatizaciones_confirmadas():
             item["ticket_ultimo"] = ""
             hubo_cambios = True
 
+    periodos_ciclo = periodos_movimientos_ciclos(movimientos)
     for item in automatizaciones:
-        meses_pagados, vencida = estado_vigencia_automatizacion(item, movimientos)
+        periodos = periodos_movimiento_automatizacion(item, movimientos, periodos_ciclo)
+        meses_pagados, vencida = estado_vigencia_automatizacion(item, movimientos, periodos)
         item["meses_pagados_actuales"] = meses_pagados
         item["vigencia_vencida"] = vencida
+        item["cuenta_en_periodo"] = cuenta_automatizacion_en_periodo(item, movimientos, periodo, periodos, periodos_ciclo, vencida)
         if vencida and item.get("activo"):
             item["activo"] = False
             hubo_cambios = True
@@ -2525,19 +2580,22 @@ def datos_gastos_variables(datos_dashboard, vista="diaria"):
     fin = datos_dashboard["periodo_fin"]
     hoy = datos_dashboard["fecha_calculo"]
     fin_visible = min(hoy, fin)
-    periodo = inicio.isoformat()
+    todos_movimientos = leer_movimientos()
+    periodo = clave_ciclo(hoy, todos_movimientos)
     todas_las_automatizaciones = leer_automatizaciones()
+    periodos_ciclo = periodos_movimientos_ciclos(todos_movimientos)
+    automatizaciones_del_periodo = [
+        item for item in todas_las_automatizaciones
+        if cuenta_automatizacion_en_periodo(item, todos_movimientos, periodo, periodos_ciclo=periodos_ciclo)
+    ]
     automatizaciones_gasto = [
         item
-        for item in todas_las_automatizaciones
-        if item.get("activo")
-        and item.get("tipo") == "Gasto"
-        and not esta_anulada(item, periodo)
+        for item in automatizaciones_del_periodo
+        if item.get("tipo") == "Gasto"
     ]
     compromiso_mensual = sum(
         float(item.get("monto") or 0)
-        for item in todas_las_automatizaciones
-        if item.get("activo") and not esta_anulada(item, periodo)
+        for item in automatizaciones_del_periodo
     )
     ingresos_periodo = sum(
         float(item.get("monto") or 0)
@@ -2776,7 +2834,7 @@ def calcular_planificacion():
     gastos_fijos_ciclo = sum(
         item["monto"]
         for item in automatizaciones
-        if item.get("activo") and item.get("tipo") == "Gasto" and not esta_anulada(item, periodo)
+        if item.get("cuenta_en_periodo") and item.get("tipo") == "Gasto"
     ) + cuotas_mes
     plan_ingresos = sum(item["monto"] for item in planificaciones if item["tipo"] == "Ingreso")
     plan_gastos = sum(item["monto"] for item in planificaciones if item["tipo"] == "Gasto")
@@ -2795,7 +2853,7 @@ def calcular_planificacion():
             continue
         categoria = (item.get("categoria") or "").strip().lower()
         es_fijo = tipo == "Gasto" and any(
-            automatizacion.get("activo")
+            automatizacion.get("cuenta_en_periodo")
             and movimiento_coincide_automatizacion(item, automatizacion)
             for automatizacion in automatizaciones
         )
@@ -3013,10 +3071,13 @@ def macrocategorias():
         escribir_macro_categorias(asignaciones)
         return redirect(url_for("macrocategorias"))
 
+    movimientos_fijos = leer_movimientos()
+    periodo_fijos = periodo_actual()
+    periodos_fijos = periodos_movimientos_ciclos(movimientos_fijos)
     gastos_fijos = [
         item
         for item in leer_automatizaciones()
-        if item.get("activo") and item.get("tipo") == "Gasto"
+        if item.get("tipo") == "Gasto" and cuenta_automatizacion_en_periodo(item, movimientos_fijos, periodo_fijos, periodos_ciclo=periodos_fijos)
     ]
     return render_template(
         "macrocategorias.html",
@@ -3329,12 +3390,12 @@ def automatizacion():
     total_gastos_fijos = sum(
         item["monto"]
         for item in automatizaciones
-        if item["activo"] and item["tipo"] == "Gasto" and not esta_anulada(item, periodo)
+        if item.get("cuenta_en_periodo") and item["tipo"] == "Gasto"
     )
     total_gastos_fijos_sin_aporte = sum(
         item["monto"]
         for item in automatizaciones
-        if item["activo"]
+        if item.get("cuenta_en_periodo")
         and item["tipo"] == "Gasto"
         and not esta_anulada(item, periodo)
         and "aporte al hogar" not in f"{item['categoria']} {item['descripcion']}".lower()
@@ -3342,7 +3403,7 @@ def automatizacion():
     total_ahorros_planificados = sum(
         item["monto"]
         for item in automatizaciones
-        if item["activo"] and item["tipo"] == "Ahorro" and not esta_anulada(item, periodo)
+        if item.get("cuenta_en_periodo") and item["tipo"] == "Ahorro"
     )
     compromiso_mensual = total_gastos_fijos + total_ahorros_planificados
     movimientos_pagina = leer_movimientos()
@@ -3515,7 +3576,7 @@ def descargar_gastos_fijos():
             estado = "Pendiente"
         salida.append(
             [
-                periodo,
+                periodo_legible(periodo),
                 item["tipo"],
                 item["descripcion"] or "Sin descripcion",
                 item["categoria"] or "Sin categoria",
@@ -3532,7 +3593,7 @@ def descargar_gastos_fijos():
         contenido,
         mimetype="text/csv; charset=utf-8",
         headers={
-            "Content-Disposition": f"attachment; filename=gastos_fijos_{periodo}.csv"
+            "Content-Disposition": f"attachment; filename=gastos_fijos_{periodo_legible(periodo)}.csv"
         },
     )
 
@@ -4412,7 +4473,7 @@ def exportar_movimientos_ciclo():
     salida = BytesIO()
     libro.save(salida)
     salida.seek(0)
-    nombre = f"movimientos_{inicio.isoformat()}_{fin.isoformat()}.xlsx"
+    nombre = f"movimientos_{fecha_corta(inicio)}_{fecha_corta(fin)}.xlsx"
     return send_file(
         salida,
         as_attachment=True,
