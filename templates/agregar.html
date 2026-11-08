@@ -26,7 +26,7 @@
 
           <label>
             Fecha
-            <input type="date" name="fecha" value="{{ movimiento.fecha if movimiento else '' }}" required>
+            <input type="date" name="fecha" max="{{ fecha_hoy_chile }}" value="{{ movimiento.fecha if movimiento else '' }}" required>
           </label>
 
           {% if not tipo %}
@@ -62,7 +62,7 @@
 
           <label>
             Monto
-            <input type="number" name="monto" min="0" step="0.01" value="{{ movimiento.monto if movimiento else '' }}" required>
+            <input type="number" name="monto" min="0" step="1" inputmode="numeric" value="{{ movimiento.monto if movimiento else '' }}" required>
           </label>
 
           {% if deudas_compartidas|default([]) %}
@@ -98,7 +98,7 @@
                     <input type="date" name="sub_fecha" value="{{ detalle.fecha or (movimiento.fecha if movimiento else '') }}" aria-label="Fecha del subgasto">
                     <input type="text" name="sub_categoria" list="categorias-gasto" value="{{ detalle.categoria }}" placeholder="Categoría">
                     <input type="text" name="sub_descripcion" value="{{ detalle.descripcion }}" placeholder="Descripción opcional">
-                    <input type="number" name="sub_monto" min="0" step="0.01" value="{{ detalle.monto }}" placeholder="Monto">
+                    <input type="number" name="sub_monto" min="0" step="1" inputmode="numeric" value="{{ detalle.monto }}" placeholder="Monto">
                     <button type="button" class="cash-remove-button" data-remove-cash aria-label="Eliminar subgasto">×</button>
                   </div>
                 {% else %}
@@ -106,7 +106,7 @@
                     <input type="date" name="sub_fecha" value="{{ movimiento.fecha if movimiento else '' }}" aria-label="Fecha del subgasto">
                     <input type="text" name="sub_categoria" list="categorias-gasto" placeholder="Categoría">
                     <input type="text" name="sub_descripcion" placeholder="Descripción opcional">
-                    <input type="number" name="sub_monto" min="0" step="0.01" placeholder="Monto">
+                    <input type="number" name="sub_monto" min="0" step="1" inputmode="numeric" placeholder="Monto">
                     <button type="button" class="cash-remove-button" data-remove-cash aria-label="Eliminar subgasto">×</button>
                   </div>
                 {% endfor %}
@@ -117,7 +117,7 @@
                   <input type="date" name="sub_fecha" aria-label="Fecha del subgasto">
                   <input type="text" name="sub_categoria" list="categorias-gasto" placeholder="Categoría">
                   <input type="text" name="sub_descripcion" placeholder="Descripción opcional">
-                  <input type="number" name="sub_monto" min="0" step="0.01" placeholder="Monto">
+                  <input type="number" name="sub_monto" min="0" step="1" inputmode="numeric" placeholder="Monto">
                   <button type="button" class="cash-remove-button" data-remove-cash aria-label="Eliminar subgasto">×</button>
                 </div>
               </template>
@@ -151,7 +151,7 @@
           <form class="salary-form" method="post" action="{{ url_for('agregar_sueldo') }}">
             <label>
               Monto
-              <input type="number" name="monto" min="0" step="0.01" placeholder="Monto" required>
+              <input type="number" name="monto" min="0" step="1" inputmode="numeric" placeholder="Monto" required>
             </label>
             <button type="submit">Guardar sueldo</button>
             <span>Fecha: {{ sueldo_fecha|fecha_corta }}</span>
@@ -160,6 +160,6 @@
       {% endif %}
     </main>
 
-    <script src="{{ url_for('static', filename='app.js', v='20261107-10') }}"></script>
+    <script src="{{ url_for('static', filename='app.js', v='20261107-12') }}"></script>
   </body>
 </html>

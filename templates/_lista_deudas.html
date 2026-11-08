@@ -16,7 +16,7 @@
         <form class="debt-payment" method="post" action="{{ url_for('pagar_deuda', deuda_id=item.id) }}">
           <label>
             Abono
-            <input type="number" name="monto_pago" min="0.01" max="{{ item.saldo }}" step="0.01" value="{{ item.abono_sugerido }}" required>
+            <input type="number" name="monto_pago" min="1" max="{{ item.saldo }}" step="1" inputmode="numeric" value="{{ item.abono_sugerido }}" required>
           </label>
           <label>
             Fecha de pago

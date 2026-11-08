@@ -988,6 +988,39 @@ th {
   width: 100% !important;
 }
 
+.chart-expand-button { display: none; }
+
+@media (max-width: 720px) {
+  .chart-expand-button {
+    display: inline-flex;
+    position: absolute;
+    right: 8px;
+    top: 8px;
+    z-index: 2;
+    padding: 7px 10px;
+    font-size: 12px;
+  }
+  .chart-canvas-wrap:has(.chart-expand-button) { padding-top: 38px; }
+  .chart-canvas-wrap.chart-expanded {
+    background: var(--surface, #fff);
+    box-sizing: border-box;
+    height: 100vw !important;
+    left: 100vw;
+    margin: 0;
+    max-width: none;
+    position: fixed;
+    top: 0;
+    transform: rotate(90deg);
+    transform-origin: top left;
+    width: 100vh !important;
+    z-index: 10000;
+  }
+  .chart-canvas-wrap.chart-expanded canvas {
+    height: calc(100vw - 48px) !important;
+    width: calc(100vh - 16px) !important;
+  }
+}
+
 .variable-expenses-panel {
   margin-top: 30px;
 }

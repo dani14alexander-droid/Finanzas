@@ -280,7 +280,7 @@
                     </td>
                     <td><input form="quick-add-movement" type="text" name="categoria" list="categorias-gasto" data-category-list placeholder="Categoria" required></td>
                     <td><input form="quick-add-movement" type="text" name="descripcion" placeholder="Descripcion"></td>
-                    <td><input form="quick-add-movement" type="number" name="monto" min="0" step="0.01" placeholder="0" required></td>
+                    <td><input form="quick-add-movement" type="number" name="monto" min="0" step="1" inputmode="numeric" placeholder="0" required></td>
                     <td><button form="quick-add-movement" type="submit">Agregar</button></td>
                 </tr>
               </tbody>
@@ -317,6 +317,6 @@
     {% include "_categorias_datalist.html" %}
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.2.0"></script>
-    <script src="{{ url_for('static', filename='app.js', v='20261107-10') }}"></script>
+    <script src="{{ url_for('static', filename='app.js', v='20261107-12') }}"></script>
   </body>
 </html>

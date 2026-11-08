@@ -86,6 +86,11 @@
               <small>Se descontará del gasto únicamente cuando la deuda se marque pagada.</small>
             </label>
 
+            <label data-loan-savings>
+              <span><input type="checkbox" name="origen_ahorro" value="1"> Financiar este préstamo con mis ahorros</span>
+              <small>Al registrar el cobro, el monto recuperado volverá a Ahorro flexible.</small>
+            </label>
+
             <label>
               Descripcion
               <input type="text" name="descripcion" placeholder="Detalle opcional">
@@ -93,12 +98,12 @@
 
             <label>
               Fecha
-              <input type="date" name="fecha" required>
+              <input type="date" name="fecha" max="{{ fecha_hoy_chile }}" required>
             </label>
 
             <label>
               Monto
-              <input type="number" name="monto" min="0" step="0.01" required>
+              <input type="number" name="monto" min="0" step="1" inputmode="numeric" required>
             </label>
 
             <button type="submit">Guardar deuda</button>
@@ -194,6 +199,6 @@
 
     <script id="deudas-persona-data" type="application/json">{{ {"labels": grafico_personas|map(attribute="persona")|list, "me_deben": grafico_personas|map(attribute="me_deben")|list, "debo": grafico_personas|map(attribute="debo")|list}|tojson }}</script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
-    <script src="{{ url_for('static', filename='app.js', v='20261107-10') }}"></script>
+    <script src="{{ url_for('static', filename='app.js', v='20261107-12') }}"></script>
   </body>
 </html>

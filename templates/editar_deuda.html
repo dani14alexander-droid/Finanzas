@@ -75,7 +75,7 @@
 
           <label>
             Monto
-            <input type="number" name="monto" min="{{ item.monto_pagado if item.monto_pagado else 0.01 }}" step="0.01" value="{{ item.monto }}" required>
+            <input type="number" name="monto" min="{{ item.monto_pagado|round(0, 'ceil')|int if item.monto_pagado else 1 }}" step="1" inputmode="numeric" value="{{ item.monto }}" required>
           </label>
 
           <div class="actions">
@@ -86,6 +86,6 @@
       </section>
     </main>
 
-    <script src="{{ url_for('static', filename='app.js', v='20261107-10') }}"></script>
+    <script src="{{ url_for('static', filename='app.js', v='20261107-12') }}"></script>
   </body>
 </html>

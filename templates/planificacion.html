@@ -115,7 +115,7 @@
 
             <label>
               Monto
-              <input type="number" name="monto" min="0" step="0.01" required>
+              <input type="number" name="monto" min="0" step="1" inputmode="numeric" required>
             </label>
 
             <button type="submit">Agregar a planificacion</button>
@@ -226,6 +226,6 @@
       </section>
     </main>
 
-    <script src="{{ url_for('static', filename='app.js', v='20261107-10') }}"></script>
+    <script src="{{ url_for('static', filename='app.js', v='20261107-12') }}"></script>
   </body>
 </html>

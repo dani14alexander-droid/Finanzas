@@ -1,0 +1,17 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Monto inválido</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css', v='20261107-11') }}">
+  </head>
+  <body>
+    {% include "_navigation.html" %}
+    <main class="container narrow"><section class="panel">
+      <p class="eyebrow">Revisa el monto</p>
+      <h1>Ingresa pesos enteros</h1>
+      <p>Los montos no pueden incluir decimales. Corrige el valor para guardar el cambio.</p>
+      <div class="actions"><button type="button" onclick="history.back()">Volver y corregir</button><a class="link-button" href="{{ url_for('index') }}">Ir al panel</a></div>
+    </section></main>
+  </body>
+</html>

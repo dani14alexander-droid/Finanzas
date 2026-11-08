@@ -92,6 +92,13 @@ const initializeDateFields = (root = document) => {
 };
 initializeDateFields();
 
+document.addEventListener("input", (event) => {
+  const input = event.target;
+  if (!input.matches?.('input[type="number"][name="monto"], input[type="number"][name="monto_pago"], input[type="number"][name="sub_monto"], input[type="number"][name="parte_monto"], input[type="number"][name="parte_monto_fijo"]')) return;
+  const value = input.value;
+  input.setCustomValidity(value && !Number.isInteger(Number(value)) ? "Ingresa un monto en pesos enteros, sin decimales." : "");
+});
+
 document.querySelectorAll("[data-fixed-split-form]").forEach((form) => {
   const list = form.querySelector("[data-fixed-split-list]");
   const template = form.querySelector("[data-fixed-part-template]");
@@ -356,12 +363,16 @@ document.querySelectorAll("[data-debt-form]").forEach((form) => {
   const categoryPicker = form.querySelector(".category-picker");
   const sharedExpenseField = form.querySelector("[data-shared-expense]");
   const sharedExpenseSelect = form.elements.namedItem("gasto_asociado_id");
+  const savingsFunding = form.elements.namedItem("origen_ahorro");
+  const savingsFundingField = form.querySelector("[data-loan-savings]");
 
   const updateDebtFields = () => {
     const isPayable = type.value === "Debo";
     const hasInstallments = isPayable && mode.value === "Cuotas";
     modeField.hidden = !isPayable;
     installmentsField.hidden = !hasInstallments;
+    if (savingsFundingField) savingsFundingField.hidden = isPayable;
+    if (savingsFunding) savingsFunding.disabled = isPayable;
     const isSharedExpense =
       type.value === "Me deben" &&
       category.value.trim().toLocaleLowerCase("es") === "compra compartida";
@@ -378,6 +389,25 @@ document.querySelectorAll("[data-debt-form]").forEach((form) => {
   category?.addEventListener("input", updateDebtFields);
   categoryPicker?.addEventListener("change", updateDebtFields);
   updateDebtFields();
+});
+
+document.querySelectorAll(".chart-canvas-wrap:has(#movimientosHistoricoChart), .chart-canvas-wrap:has(#disponibleHistoricoChart), .chart-canvas-wrap:has(#deudasHistoricoChart)").forEach((wrap) => {
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = "chart-expand-button";
+  button.textContent = "Ampliar gráfico";
+  button.setAttribute("aria-pressed", "false");
+  button.addEventListener("click", () => {
+    const expanded = wrap.classList.toggle("chart-expanded");
+    button.textContent = expanded ? "Cerrar vista ampliada" : "Ampliar gráfico";
+    button.setAttribute("aria-pressed", String(expanded));
+  });
+  wrap.append(button);
+});
+
+const todayForDateLimit = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Santiago" }).format(new Date());
+document.querySelectorAll('input[type="date"][name="fecha"], input[type="date"][name="fecha_pago"]').forEach((input) => {
+  input.max = todayForDateLimit;
 });
 
 document.querySelectorAll(".cash-breakdown").forEach((breakdown) => {

@@ -29,6 +29,25 @@ from flask import Flask, Response, g, has_request_context, redirect, render_temp
 app = Flask(__name__)
 
 
+@app.before_request
+def validar_montos_enteros():
+    if request.method != "POST":
+        return None
+    campos = ("monto", "monto_pago", "sub_monto", "parte_monto", "parte_monto_fijo")
+    for campo in campos:
+        for valor in request.form.getlist(campo):
+            if not valor.strip():
+                continue
+            try:
+                monto = Decimal(valor.strip())
+                if not monto.is_finite() or monto != monto.to_integral_value():
+                    raise InvalidOperation
+            except (InvalidOperation, ValueError):
+                html = app.jinja_env.get_template("monto_invalido.html").render()
+                return Response(html, status=400, mimetype="text/html")
+    return None
+
+
 def cache_lectura(func):
     """Reutiliza lecturas en una solicitud, sin compartir datos entre usuarios."""
     @wraps(func)
@@ -1184,6 +1203,11 @@ def asignaciones_macro_dict():
 
 def fecha_hoy_chile():
     return datetime.now(ZONA_HORARIA_CHILE).date()
+
+
+def fecha_es_futura(valor):
+    fecha = fecha_movimiento(valor)
+    return bool(fecha and fecha > fecha_hoy_chile())
 
 
 def periodo_actual():
@@ -2440,12 +2464,14 @@ def resumen_historico(vista, desde=None, hasta=None):
         item
         for item in todos_los_movimientos
         if (fecha := fecha_movimiento(item.get("fecha", ""))) and fecha >= historico_desde
+        and fecha <= fecha_hoy_chile()
         and (desde is None or fecha >= desde) and (hasta is None or fecha <= hasta)
     ]
     deudas_lista = [
         item
         for item in todas_las_deudas
         if (fecha := fecha_movimiento(item.get("fecha", ""))) and fecha >= historico_desde
+        and fecha <= fecha_hoy_chile()
         and (desde is None or fecha >= desde) and (hasta is None or fecha <= hasta)
     ]
     descuentos_compartidos = descuentos_compras_compartidas(todas_las_deudas)
@@ -3218,6 +3244,8 @@ def eliminar_planificacion(planificacion_id):
 @app.route("/agregar", methods=["GET", "POST"])
 def agregar():
     if request.method == "POST":
+        if fecha_es_futura(request.form.get("fecha", "")):
+            return Response("La fecha no puede ser futura.", status=400)
         movimiento = {
             "fecha": request.form.get("fecha", ""),
             "tipo": request.form.get("tipo", "Gasto")
@@ -3235,7 +3263,7 @@ def agregar():
             escribir_subgastos_movimiento(ticket, subgastos)
         return redirect(url_for("index"))
 
-    return render_template("agregar.html")
+    return render_template("agregar.html", fecha_hoy_chile=fecha_hoy_chile().isoformat())
 
 
 @app.route("/agregar/<tipo>", methods=["GET", "POST"])
@@ -3250,6 +3278,8 @@ def agregar_por_tipo(tipo):
 
     tipo_movimiento, titulo, ayuda_categoria = tipos[tipo]
     if request.method == "POST":
+        if fecha_es_futura(request.form.get("fecha", "")):
+            return Response("La fecha no puede ser futura.", status=400)
         movimiento = {
             "fecha": request.form.get("fecha", ""),
             "tipo": tipo_movimiento,
@@ -3271,6 +3301,7 @@ def agregar_por_tipo(tipo):
         titulo=titulo,
         ayuda_categoria=ayuda_categoria,
         sueldo_fecha=penultimo_dia_habil_mes() if tipo_movimiento == "Ingreso" else "",
+        fecha_hoy_chile=fecha_hoy_chile().isoformat(),
     )
 
 
@@ -3318,6 +3349,8 @@ def editar(movimiento_id):
             parametros_resumen["ciclo"] = volver_ciclo
             volver_a = f"{url_for('resumen', **parametros_resumen)}#movimientos"
     if request.method == "POST":
+        if fecha_es_futura(request.form.get("fecha", "")):
+            return Response("La fecha no puede ser futura.", status=400)
         tipo = request.form.get("tipo", movimiento["tipo"])
         movimiento_anterior = movimiento.copy()
         ticket_movimiento = movimiento.get("ticket_movimiento") or uuid.uuid4().hex
@@ -3390,6 +3423,8 @@ def eliminar(movimiento_id):
 
 @app.route("/resumen/agregar", methods=["POST"])
 def agregar_desde_resumen():
+    if fecha_es_futura(request.form.get("fecha", "")):
+        return Response("La fecha no puede ser futura.", status=400)
     tipo = request.form.get("tipo", "Gasto")
     if tipo not in TIPOS_VALIDOS:
         tipo = "Gasto"
@@ -3827,7 +3862,7 @@ def firma_registro_fijo(movimiento):
 def monto_registro(valor):
     try:
         monto = Decimal(str(valor))
-        if not monto.is_finite() or monto <= 0 or monto != monto.quantize(Decimal("0.01")):
+        if not monto.is_finite() or monto <= 0 or monto != monto.to_integral_value():
             return None
         return monto
     except (InvalidOperation, ValueError):
@@ -3974,6 +4009,8 @@ def filtro_fechas(desde_nombre, hasta_nombre):
 @app.route("/deudas", methods=["GET", "POST"])
 def deudas():
     if request.method == "POST":
+        if fecha_es_futura(request.form.get("fecha", "")):
+            return Response("La fecha no puede ser futura.", status=400)
         tipo = request.form.get("tipo", "Me deben")
         if tipo not in TIPOS_DEUDA:
             tipo = "Me deben"
@@ -3981,7 +4018,10 @@ def deudas():
         if categoria.lower() in {"prestamo", "préstamo", "prestamo recibido", "préstamo recibido"}:
             categoria = "Cuenta por cobrar" if tipo == "Me deben" else "Deuda"
         modalidad = request.form.get("modalidad", "Simple") if tipo == "Debo" else "Simple"
-        if modalidad not in {"Simple", "Cuotas", "Prestamo"}:
+        origen_ahorro = tipo == "Me deben" and request.form.get("origen_ahorro") == "1"
+        if origen_ahorro:
+            modalidad = "Ahorro"
+        if modalidad not in {"Simple", "Cuotas", "Prestamo", "Ahorro"}:
             modalidad = "Simple"
         if tipo == "Debo" and modalidad == "Prestamo":
             categoria = "Deuda"
@@ -4029,16 +4069,27 @@ def deudas():
                     "origen_deuda": "origen",
                 }
             )
+        if origen_ahorro:
+            ahorro_ticket = guardar_movimiento({
+                "fecha": item["fecha"], "tipo": "Ahorro", "categoria": "Ahorro flexible",
+                "descripcion": f"Préstamo desde ahorro - {item['persona']}", "monto": item["monto"],
+                "ticket_deuda": ticket_deuda, "origen_deuda": "origen",
+            })
+            escribir_subgastos_movimiento(ahorro_ticket, [{
+                "fecha": item["fecha"], "categoria": "Préstamo", "descripcion": item["persona"], "monto": item["monto"]
+            }])
         return redirect(url_for("deudas"))
 
     deudas_lista = leer_deudas()
     for item in deudas_lista:
         item["saldo"] = max(round(float(item.get("monto") or 0) - float(item.get("monto_pagado") or 0), 2), 0)
-        item["abono_sugerido"] = (
-            round(max(monto_cuota(item) - (float(item.get("monto_pagado") or 0) % monto_cuota(item)), 0), 2)
-            if item.get("modalidad") == "Cuotas" and monto_cuota(item) > 0
-            else item["saldo"]
-        )
+        if item.get("modalidad") == "Cuotas" and item["saldo"] > 0:
+            cuotas = max(int(item.get("cuotas_total") or 1), 1)
+            siguiente_cuota = min(int(item.get("cuotas_pagadas") or 0) + 1, cuotas)
+            limite = math.ceil(float(item.get("monto") or 0) * siguiente_cuota / cuotas)
+            item["abono_sugerido"] = min(item["saldo"], max(1, limite - float(item.get("monto_pagado") or 0)))
+        else:
+            item["abono_sugerido"] = item["saldo"]
     pendientes = [item for item in deudas_lista if item["estado"] != "Pagada"]
     pagadas = sorted(
         (item for item in deudas_lista if item["estado"] == "Pagada"),
@@ -4100,6 +4151,7 @@ def deudas():
         historial_filtrado=historial_filtrado, h_persona=h_persona, h_tipo=h_tipo,
         h_desde=h_desde, h_hasta=h_hasta, error_historial=error_historial,
         historial_abierto=bool(request.args.get("historial")),
+        fecha_hoy_chile=fecha_hoy_chile().isoformat(),
     )
 
 
@@ -4112,21 +4164,26 @@ def pagar_deuda(deuda_id):
     item = deudas_lista[deuda_id]
     if item["estado"] != "Pagada":
         fecha_pago = request.form.get("fecha_pago") or fecha_hoy_chile().isoformat()
+        if fecha_es_futura(fecha_pago):
+            return Response("La fecha de pago no puede ser futura.", status=400)
         saldo_actual = max(float(item.get("monto") or 0) - float(item.get("monto_pagado") or 0), 0)
         try:
             abono = float(request.form.get("monto_pago") or saldo_actual)
         except ValueError:
             abono = 0
+        if not math.isfinite(abono) or not abono.is_integer():
+            html = app.jinja_env.get_template("monto_invalido.html").render()
+            return Response(html, status=400, mimetype="text/html")
         if abono <= 0 or abono > saldo_actual + 0.009:
             return redirect(url_for("deudas"))
         abono = round(min(abono, saldo_actual), 2)
         if not es_compra_compartida(item):
-            tipo_movimiento = "Restitución" if item["tipo"] == "Me deben" else "Gasto"
+            tipo_movimiento = "Ahorro" if item["tipo"] == "Me deben" and item.get("modalidad") == "Ahorro" else "Restitución" if item["tipo"] == "Me deben" else "Gasto"
             guardar_movimiento(
                 {
                     "fecha": fecha_pago,
                     "tipo": tipo_movimiento,
-                    "categoria": "Restitución" if item["tipo"] == "Me deben" else item["categoria"] or "Deudas",
+                    "categoria": "Ahorro flexible" if tipo_movimiento == "Ahorro" else "Restitución" if item["tipo"] == "Me deben" else item["categoria"] or "Deudas",
                     "descripcion": f"{item['tipo']} - {item['persona']} | {item['descripcion']}",
                     "monto": abono,
                     "ticket_deuda": item.get("ticket_deuda", ""),
@@ -4151,14 +4208,16 @@ def editar_deuda(deuda_id):
 
     item = deudas_lista[deuda_id]
     if request.method == "POST":
+        if fecha_es_futura(request.form.get("fecha", item["fecha"])):
+            return Response("La fecha no puede ser futura.", status=400)
         tipo = request.form.get("tipo", item["tipo"])
         if tipo not in TIPOS_DEUDA:
             tipo = item["tipo"]
         categoria = request.form.get("categoria", "").strip()
         if categoria.lower() in {"prestamo", "préstamo", "prestamo recibido", "préstamo recibido"}:
             categoria = "Cuenta por cobrar" if tipo == "Me deben" else "Deuda"
-        modalidad = request.form.get("modalidad", "Simple") if tipo == "Debo" else "Simple"
-        if modalidad not in {"Simple", "Cuotas", "Prestamo"}:
+        modalidad = request.form.get("modalidad", "Simple") if tipo == "Debo" else ("Ahorro" if item.get("modalidad") == "Ahorro" else "Simple")
+        if modalidad not in {"Simple", "Cuotas", "Prestamo", "Ahorro"}:
             modalidad = "Simple"
         if tipo == "Debo" and modalidad == "Prestamo":
             categoria = "Deuda"
@@ -4238,7 +4297,7 @@ def editar_deuda(deuda_id):
         elif tipo == "Debo" and modalidad == "Prestamo":
             tipo_origen = "Ingreso"
         if tipo_origen and actualizar_origen:
-            guardar_movimiento(
+            ticket_origen = guardar_movimiento(
                 {
                     "fecha": item["fecha"],
                     "tipo": tipo_origen,
@@ -4249,6 +4308,16 @@ def editar_deuda(deuda_id):
                     "origen_deuda": "origen",
                 }
             )
+            if modalidad == "Ahorro":
+                ticket_ahorro = guardar_movimiento({
+                    "fecha": item["fecha"], "tipo": "Ahorro", "categoria": "Ahorro flexible",
+                    "descripcion": f"Préstamo desde ahorro - {item['persona']}", "monto": item["monto"],
+                    "ticket_deuda": ticket, "origen_deuda": "origen",
+                })
+                escribir_subgastos_movimiento(ticket_ahorro, [{
+                    "fecha": item["fecha"], "categoria": "Préstamo",
+                    "descripcion": item["persona"], "monto": item["monto"],
+                }])
         if request.args.get("volver_historial"):
             filtros = {nombre: request.args.get(nombre, "") for nombre in ("h_persona", "h_tipo", "h_desde", "h_hasta", "g_modo", "g_persona", "g_desde", "g_hasta")}
             return redirect(url_for("deudas", historial=1, _anchor="historial-deudas", **filtros))
