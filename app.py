@@ -538,6 +538,8 @@ def clasificar_movimientos_cobrar(movimientos):
     for movimiento in movimientos:
         if movimiento.get("ticket_deuda") not in tickets:
             continue
+        if movimiento.get("tipo") == "Ahorro":
+            continue
         if movimiento.get("origen_deuda") == "origen":
             movimiento["tipo"] = "Cuenta por cobrar"
             movimiento["categoria"] = "Cuenta por cobrar"
@@ -549,8 +551,11 @@ def clasificar_movimientos_cobrar(movimientos):
 
 def flujo_cuentas_por_cobrar(movimientos):
     return sum(
-        float(item.get("monto") or 0) * (1 if item.get("tipo") == "Restitución" else -1)
-        for item in movimientos if item.get("tipo") in {"Cuenta por cobrar", "Restitución"}
+        float(item.get("monto") or 0)
+        * (1 if item.get("tipo") == "Restitución" or item.get("tipo") == "Ahorro" else -1)
+        for item in movimientos
+        if item.get("tipo") in {"Cuenta por cobrar", "Restitución"}
+        or (item.get("tipo") == "Ahorro" and item.get("ticket_deuda") and item.get("origen_deuda") == "pago")
     )
 
 
@@ -1418,6 +1423,9 @@ def es_movimiento_detallable(movimiento):
 
 
 def total_detalles_movimiento(movimiento, subgastos_agrupados):
+    if (movimiento.get("tipo") == "Ahorro" and movimiento.get("ticket_deuda")
+            and movimiento.get("origen_deuda") == "origen"):
+        return 0
     return min(
         sum(
             float(item.get("monto") or 0)
@@ -1429,6 +1437,9 @@ def total_detalles_movimiento(movimiento, subgastos_agrupados):
 
 def monto_ahorro_neto(movimiento, subgastos_agrupados):
     monto = float(movimiento.get("monto") or 0)
+    if (movimiento.get("tipo") == "Ahorro" and movimiento.get("ticket_deuda")
+            and movimiento.get("origen_deuda") == "origen"):
+        return -monto
     if not (
         movimiento.get("tipo") == "Ahorro"
         and movimiento.get("categoria", "").strip().lower() == CATEGORIA_AHORRO_FLEXIBLE.lower()
@@ -2510,6 +2521,7 @@ def resumen_historico(vista, desde=None, hasta=None):
             periodo["detalle_gastos"].append(item)
         elif item["tipo"] == "Ahorro":
             periodo["ahorros"] += monto_ahorro_neto(item, subgastos_agrupados)
+            periodo["flujo_cuentas"] += flujo_cuentas_por_cobrar([item])
             if item.get("categoria", "").strip().lower() == CATEGORIA_AHORRO_FLEXIBLE.lower():
                 periodo["gastos"] += total_detalles_movimiento(item, subgastos_agrupados)
             periodo["detalle_ahorros"].append(item)
@@ -2557,6 +2569,7 @@ def resumen_historico(vista, desde=None, hasta=None):
                 )
             elif item.get("tipo") == "Ahorro":
                 variacion = -monto_ahorro_neto(item, subgastos_agrupados)
+                variacion += flujo_cuentas_por_cobrar([item])
                 if item.get("categoria", "").strip().lower() == CATEGORIA_AHORRO_FLEXIBLE.lower():
                     variacion -= total_detalles_movimiento(item, subgastos_agrupados)
             elif item.get("tipo") in {"Cuenta por cobrar", "Restitución"}:

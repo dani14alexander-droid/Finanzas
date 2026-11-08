@@ -391,20 +391,38 @@ document.querySelectorAll("[data-debt-form]").forEach((form) => {
   updateDebtFields();
 });
 
-document.querySelectorAll("#movimientosHistoricoChart, #disponibleHistoricoChart, #deudasHistoricoChart, #deudasPersonaChart").forEach((canvas) => {
-  const wrap = canvas.closest(".chart-canvas-wrap");
+document.querySelectorAll(".chart-canvas-wrap canvas, .pie-chart canvas").forEach((canvas) => {
+  const wrap = canvas.closest(".chart-canvas-wrap, .pie-chart");
   if (!wrap) return;
   wrap.classList.add("chart-expandable");
   const button = document.createElement("button");
   button.type = "button";
   button.className = "chart-expand-button";
-  button.textContent = "Ampliar gráfico";
+  button.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 3H3v5m13-5h5v5M3 16v5h5m13-5v5h-5"/></svg>';
+  button.setAttribute("aria-label", "Ampliar gráfico");
+  button.title = "Ampliar gráfico";
   button.setAttribute("aria-pressed", "false");
-  button.addEventListener("click", () => {
-    const expanded = wrap.classList.toggle("chart-expanded");
-    button.textContent = expanded ? "Cerrar vista ampliada" : "Ampliar gráfico";
+  const toggleChart = (expanded) => {
+    wrap.classList.toggle("chart-expanded", expanded);
+    const label = expanded ? "Cerrar gráfico ampliado" : "Ampliar gráfico";
+    button.setAttribute("aria-label", label);
+    button.title = label;
     button.setAttribute("aria-pressed", String(expanded));
-    requestAnimationFrame(() => window.Chart?.getChart(canvas)?.resize());
+    button.querySelector("path").setAttribute("d", expanded ? "M6 6l12 12M18 6L6 18" : "M8 3H3v5m13-5h5v5M3 16v5h5m13-5v5h-5");
+    requestAnimationFrame(() => {
+      const chart = window.Chart?.getChart(canvas);
+      if (!chart) return;
+      if (wrap.classList.contains("pie-chart")) {
+        const size = expanded ? Math.min(window.innerWidth - 64, 360) : window.innerWidth <= 380 ? 210 : window.innerWidth <= 720 ? 230 : 280;
+        chart.resize(size, size);
+      } else {
+        chart.resize();
+      }
+    });
+  };
+  button.addEventListener("click", () => toggleChart(!wrap.classList.contains("chart-expanded")));
+  button.addEventListener("keydown", (event) => {
+    if (event.key === "Escape" && wrap.classList.contains("chart-expanded")) toggleChart(false);
   });
   wrap.append(button);
 });

@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Deudas</title>
     <link rel="manifest" href="{{ url_for('static', filename='manifest.json') }}">
-    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css', v='20261108-10') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css', v='20261108-11') }}">
   </head>
   <body>
     {% include "_navigation.html" %}
@@ -199,6 +199,6 @@
 
     <script id="deudas-persona-data" type="application/json">{{ {"labels": grafico_personas|map(attribute="persona")|list, "me_deben": grafico_personas|map(attribute="me_deben")|list, "debo": grafico_personas|map(attribute="debo")|list}|tojson }}</script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
-    <script src="{{ url_for('static', filename='app.js', v='20261108-13') }}"></script>
+    <script src="{{ url_for('static', filename='app.js', v='20261108-14') }}"></script>
   </body>
 </html>

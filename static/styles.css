@@ -1006,33 +1006,61 @@ th {
 }
 
 @media (max-width: 720px) {
-  .chart-expand-button {
-    display: inline-flex;
+  button.chart-expand-button {
+    align-items: center;
+    background: rgba(248, 250, 252, 0.9);
+    border: 1px solid #d5e1f2;
+    border-radius: 8px;
+    color: #52698c;
+    display: flex;
+    height: 34px;
+    justify-content: center;
+    min-height: 34px;
+    opacity: 0.8;
+    padding: 6px;
     position: absolute;
-    right: 8px;
-    top: 8px;
+    right: 4px;
+    top: 2px;
+    width: 34px;
     z-index: 2;
-    padding: 7px 10px;
-    font-size: 12px;
   }
-  .chart-canvas-wrap.chart-expandable { padding-top: 38px; }
-  .chart-canvas-wrap.chart-expanded {
+  button.chart-expand-button svg { height: 18px; width: 18px; }
+  button.chart-expand-button:focus-visible { opacity: 1; outline: 2px solid var(--primary); }
+  .chart-canvas-wrap.chart-expandable { padding-top: 30px; }
+  .pie-chart.chart-expandable { position: relative; }
+  .pie-chart.chart-expandable > .chart-expand-button { right: -8px; top: -8px; }
+  .chart-expandable.chart-expanded {
     background: var(--surface, #fff);
     box-sizing: border-box;
     height: 100vw !important;
     left: 100vw;
     margin: 0;
-    max-width: none;
+    max-width: none !important;
     position: fixed;
     top: 0;
     transform: rotate(90deg);
     transform-origin: top left;
     width: 100vh !important;
+    width: 100dvh !important;
     z-index: 10000;
   }
+  .chart-expandable.chart-expanded > .chart-expand-button { opacity: 1; right: 8px; top: 8px; }
   .chart-canvas-wrap.chart-expanded canvas {
     height: calc(100vw - 48px) !important;
     width: calc(100vh - 16px) !important;
+    width: calc(100dvh - 16px) !important;
+  }
+  .pie-chart.chart-expanded {
+    align-items: center;
+    display: flex;
+    justify-content: center;
+    min-height: 0;
+    padding: 40px 12px 12px;
+  }
+  .pie-chart.chart-expanded canvas {
+    height: min(calc(100vw - 64px), 360px) !important;
+    max-width: none !important;
+    width: min(calc(100vw - 64px), 360px) !important;
   }
 }
 
