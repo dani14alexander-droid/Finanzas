@@ -391,7 +391,10 @@ document.querySelectorAll("[data-debt-form]").forEach((form) => {
   updateDebtFields();
 });
 
-document.querySelectorAll(".chart-canvas-wrap:has(#movimientosHistoricoChart), .chart-canvas-wrap:has(#disponibleHistoricoChart), .chart-canvas-wrap:has(#deudasHistoricoChart)").forEach((wrap) => {
+document.querySelectorAll("#movimientosHistoricoChart, #disponibleHistoricoChart, #deudasHistoricoChart, #deudasPersonaChart").forEach((canvas) => {
+  const wrap = canvas.closest(".chart-canvas-wrap");
+  if (!wrap) return;
+  wrap.classList.add("chart-expandable");
   const button = document.createElement("button");
   button.type = "button";
   button.className = "chart-expand-button";
@@ -401,6 +404,7 @@ document.querySelectorAll(".chart-canvas-wrap:has(#movimientosHistoricoChart), .
     const expanded = wrap.classList.toggle("chart-expanded");
     button.textContent = expanded ? "Cerrar vista ampliada" : "Ampliar gráfico";
     button.setAttribute("aria-pressed", String(expanded));
+    requestAnimationFrame(() => window.Chart?.getChart(canvas)?.resize());
   });
   wrap.append(button);
 });

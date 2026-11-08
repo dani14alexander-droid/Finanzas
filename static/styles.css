@@ -990,6 +990,21 @@ th {
 
 .chart-expand-button { display: none; }
 
+[data-loan-savings] > span {
+  align-items: center;
+  display: flex;
+  gap: 10px;
+}
+
+[data-loan-savings] input[type="checkbox"] {
+  accent-color: var(--primary);
+  flex: 0 0 20px;
+  height: 20px;
+  min-height: 20px;
+  padding: 0;
+  width: 20px;
+}
+
 @media (max-width: 720px) {
   .chart-expand-button {
     display: inline-flex;
@@ -1000,7 +1015,7 @@ th {
     padding: 7px 10px;
     font-size: 12px;
   }
-  .chart-canvas-wrap:has(.chart-expand-button) { padding-top: 38px; }
+  .chart-canvas-wrap.chart-expandable { padding-top: 38px; }
   .chart-canvas-wrap.chart-expanded {
     background: var(--surface, #fff);
     box-sizing: border-box;
