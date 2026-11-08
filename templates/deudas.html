@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Deudas</title>
     <link rel="manifest" href="{{ url_for('static', filename='manifest.json') }}">
-    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css', v='20261107-4') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css', v='20261107-5') }}">
   </head>
   <body>
     {% include "_navigation.html" %}
@@ -126,14 +126,50 @@
         {% endwith %}
       </section>
 
-      <details class="panel section-gap recovery-panel debt-history">
+      <section class="panel section-gap debt-analysis">
+        <div class="panel-header">
+          <div><p class="eyebrow">Cuentas pendientes</p><h2>Deudas por persona</h2></div>
+        </div>
+        <p class="hint-inline">Saldo pendiente actual de las deudas registradas en el periodo elegido.</p>
+        <form method="get" class="period-filter">
+          {% if historial_abierto %}<input type="hidden" name="historial" value="1">{% endif %}
+          <input type="hidden" name="h_persona" value="{{ h_persona }}"><input type="hidden" name="h_tipo" value="{{ h_tipo }}">
+          <input type="hidden" name="h_desde" value="{{ h_desde }}"><input type="hidden" name="h_hasta" value="{{ h_hasta }}">
+          <label>Persona <select name="g_persona"><option value="">Todas</option>{% for persona in personas %}<option value="{{ persona }}" {{ 'selected' if persona == g_persona else '' }}>{{ persona }}</option>{% endfor %}</select></label>
+          <label>Registrada desde <input type="date" name="g_desde" value="{{ g_desde }}" data-allow-empty></label>
+          <label>Registrada hasta <input type="date" name="g_hasta" value="{{ g_hasta }}" data-allow-empty></label>
+          <button type="submit">Filtrar gráfico</button>
+          <a class="link-button" href="{{ url_for('deudas', historial=1 if historial_abierto else None, h_persona=h_persona or None, h_tipo=h_tipo if h_tipo != 'Todos' else None, h_desde=h_desde or None, h_hasta=h_hasta or None) }}">Limpiar</a>
+        </form>
+        {% if error_grafico %}<p class="filter-error" role="alert">Revisa las fechas: el inicio debe ser anterior o igual al final.</p>{% endif %}
+        {% if grafico_personas %}
+          <div class="chart-canvas-wrap"><canvas id="deudasPersonaChart" aria-label="Saldos pendientes por persona" role="img"></canvas></div>
+          <div class="table-wrap"><table class="debt-chart-table"><thead><tr><th>Persona</th><th>Me deben</th><th>Debo</th><th>Balance</th></tr></thead><tbody>
+            {% for fila in grafico_personas %}<tr><td>{{ fila.persona }}</td><td class="positive">{{ fila.me_deben|moneda }}</td><td class="negative">{{ fila.debo|moneda }}</td><td>{{ (fila.me_deben - fila.debo)|moneda }}</td></tr>{% endfor %}
+          </tbody></table></div>
+        {% elif not error_grafico %}<p class="empty">No hay saldos pendientes para los filtros seleccionados.</p>{% endif %}
+      </section>
+
+      <details id="historial-deudas" class="panel section-gap recovery-panel debt-history" {{ 'open' if historial_abierto else '' }}>
         <summary>
           <span>Historial de deudas pagadas</span>
           <small>{{ pagadas|length }} deuda{{ '' if pagadas|length == 1 else 's' }} finalizada{{ '' if pagadas|length == 1 else 's' }} · Pulsa para ver el historial</small>
         </summary>
-          {% if pagadas %}
+          <form method="get" action="{{ url_for('deudas', _anchor='historial-deudas') }}" class="period-filter debt-history-filter">
+            <input type="hidden" name="historial" value="1">
+            <input type="hidden" name="g_persona" value="{{ g_persona }}"><input type="hidden" name="g_desde" value="{{ g_desde }}"><input type="hidden" name="g_hasta" value="{{ g_hasta }}">
+            <label>Persona <input type="search" name="h_persona" value="{{ h_persona }}" placeholder="Buscar persona"></label>
+            <label>Tipo <select name="h_tipo"><option value="Todos">Todos</option><option value="Me deben" {{ 'selected' if h_tipo == 'Me deben' else '' }}>Me deben</option><option value="Debo" {{ 'selected' if h_tipo == 'Debo' else '' }}>Debo</option></select></label>
+            <label>Pagada desde <input type="date" name="h_desde" value="{{ h_desde }}" data-allow-empty></label>
+            <label>Pagada hasta <input type="date" name="h_hasta" value="{{ h_hasta }}" data-allow-empty></label>
+            <button type="submit">Filtrar historial</button>
+            <a class="link-button" href="{{ url_for('deudas', historial=1, g_persona=g_persona or None, g_desde=g_desde or None, g_hasta=g_hasta or None, _anchor='historial-deudas') }}">Limpiar</a>
+          </form>
+          {% if error_historial %}<p class="filter-error" role="alert">Revisa las fechas: el inicio debe ser anterior o igual al final.</p>{% endif %}
+          <p class="history-filter-count">{{ historial_filtrado|length }} resultado{{ '' if historial_filtrado|length == 1 else 's' }}</p>
+          {% if historial_filtrado %}
             <ul class="movement-list paid-debt-list">
-              {% for item in pagadas %}
+              {% for item in historial_filtrado %}
                 <li>
                   <div>
                     <strong>{{ item.persona }}</strong>
@@ -143,18 +179,20 @@
                     </span>
                   </div>
                   <b class="{{ 'positive' if item.tipo == 'Me deben' else 'negative' }}">{{ item.monto_pagado|moneda }} pagados</b>
-                  <form class="debt-delete" method="post" action="{{ url_for('eliminar_deuda', deuda_id=item.id) }}" data-confirm-delete>
-                    <button type="submit" class="danger-button">Eliminar</button>
-                  </form>
+                  <div class="debt-history-actions"><a class="table-action" href="{{ url_for('editar_deuda', deuda_id=item.id, volver_historial=1, h_persona=h_persona, h_tipo=h_tipo, h_desde=h_desde, h_hasta=h_hasta, g_persona=g_persona, g_desde=g_desde, g_hasta=g_hasta) }}">Editar</a>
+                    <form class="debt-delete" method="post" action="{{ url_for('eliminar_deuda', deuda_id=item.id) }}" data-confirm-delete><button type="submit" class="danger-button">Eliminar</button></form>
+                  </div>
                 </li>
               {% endfor %}
             </ul>
           {% else %}
-            <p class="empty">Todavía no hay deudas pagadas.</p>
+            <p class="empty">No hay deudas pagadas para los filtros seleccionados.</p>
           {% endif %}
       </details>
     </main>
 
-    <script src="{{ url_for('static', filename='app.js', v='20261107-3') }}"></script>
+    <script id="deudas-persona-data" type="application/json">{{ {"labels": grafico_personas|map(attribute="persona")|list, "me_deben": grafico_personas|map(attribute="me_deben")|list, "debo": grafico_personas|map(attribute="debo")|list}|tojson }}</script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
+    <script src="{{ url_for('static', filename='app.js', v='20261107-5') }}"></script>
   </body>
 </html>

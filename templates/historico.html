@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Historico</title>
     <link rel="manifest" href="{{ url_for('static', filename='manifest.json') }}">
-    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css', v='20261107-3') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css', v='20261107-5') }}">
   </head>
   <body>
     {% include "_navigation.html" %}
@@ -18,6 +18,7 @@
         </div>
         <form class="view-switch" method="get">
           <input type="hidden" name="tipo" value="{{ filtro_tipo }}">
+          <input type="hidden" name="desde" value="{{ desde }}"><input type="hidden" name="hasta" value="{{ hasta }}">
           <button name="vista" value="diaria" class="{{ 'active' if vista == 'diaria' else '' }}">Diaria</button>
           <button name="vista" value="semanal" class="{{ 'active' if vista == 'semanal' else '' }}">Semanal</button>
           <button name="vista" value="mensual" class="{{ 'active' if vista == 'mensual' else '' }}">Mensual</button>
@@ -25,8 +26,18 @@
       </section>
 
       <section class="panel">
+        <form class="period-filter history-period-filter" method="get">
+          <input type="hidden" name="vista" value="{{ vista }}"><input type="hidden" name="tipo" value="{{ filtro_tipo }}">
+          <label>Desde <input type="date" name="desde" value="{{ desde }}" data-allow-empty></label>
+          <label>Hasta <input type="date" name="hasta" value="{{ hasta }}" data-allow-empty></label>
+          <button type="submit">Filtrar periodo</button>
+          <a class="link-button" href="{{ url_for('historico', vista=vista, tipo=filtro_tipo) }}">Limpiar</a>
+        </form>
+        <p class="hint-inline">El historial disponible comienza en el ciclo de agosto de 2026.</p>
+        {% if error_fechas %}<p class="filter-error" role="alert">Revisa las fechas: el inicio debe ser anterior o igual al final.</p>{% endif %}
         <form class="view-switch" method="get">
           <input type="hidden" name="vista" value="{{ vista }}">
+          <input type="hidden" name="desde" value="{{ desde }}"><input type="hidden" name="hasta" value="{{ hasta }}">
           <button name="tipo" value="Todos" class="{{ 'active' if filtro_tipo == 'Todos' else '' }}">Todos</button>
           <button name="tipo" value="Ingreso" class="{{ 'active' if filtro_tipo == 'Ingreso' else '' }}">Ingresos</button>
           <button name="tipo" value="Gasto" class="{{ 'active' if filtro_tipo == 'Gasto' else '' }}">Gastos</button>
@@ -196,6 +207,6 @@
     </script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.2.0"></script>
-    <script src="{{ url_for('static', filename='app.js', v='20261107-3') }}"></script>
+    <script src="{{ url_for('static', filename='app.js', v='20261107-5') }}"></script>
   </body>
 </html>

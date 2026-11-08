@@ -34,7 +34,7 @@ document.querySelectorAll(".topbar nav a").forEach((link) => {
 });
 
 document.querySelectorAll('input[type="date"]').forEach((dateInput) => {
-  if (!dateInput.value) {
+  if (!dateInput.value && !dateInput.hasAttribute("data-allow-empty")) {
     dateInput.value = todayInChile;
   }
 });
@@ -576,6 +576,35 @@ const buildAvailableHistory = () => {
 };
 
 buildAvailableHistory();
+
+const buildDebtsByPerson = () => {
+  const canvas = document.getElementById("deudasPersonaChart");
+  const data = readChartData("deudas-persona-data");
+  if (!canvas || !data || !window.Chart) return;
+  new Chart(canvas, {
+    type: "bar",
+    data: {
+      labels: data.labels,
+      datasets: [
+        { label: "Me deben", data: data.me_deben, backgroundColor: "#1758c8", borderRadius: 5 },
+        { label: "Debo", data: data.debo, backgroundColor: "#d93750", borderRadius: 5 },
+      ],
+    },
+    options: {
+      maintainAspectRatio: false,
+      responsive: true,
+      plugins: {
+        tooltip: { callbacks: { label: (context) => `${context.dataset.label}: ${moneyFormatter.format(Number(context.raw || 0))}` } },
+        legend: { position: "bottom" },
+      },
+      scales: {
+        x: { grid: { display: false } },
+        y: { beginAtZero: true, ticks: { callback: (value) => moneyFormatter.format(value) } },
+      },
+    },
+  });
+};
+buildDebtsByPerson();
 
 const buildVariableExpensesChart = () => {
   const canvas = document.getElementById("gastosVariablesChart");

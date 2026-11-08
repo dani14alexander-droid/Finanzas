@@ -5,15 +5,17 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Editar deuda</title>
     <link rel="manifest" href="{{ url_for('static', filename='manifest.json') }}">
-    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css', v='20261107-3') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css', v='20261107-5') }}">
   </head>
   <body>
     {% include "_navigation.html" %}
 
     <main class="container narrow">
       <section class="panel">
-        <p class="eyebrow">Deuda pendiente</p>
+        <p class="eyebrow">{{ 'Deuda pagada' if item.estado == 'Pagada' else 'Deuda pendiente' }}</p>
         <h1>Editar deuda</h1>
+        {% if error %}<p class="filter-error" role="alert">{{ error }}</p>{% endif %}
+        {% if item.monto_pagado %}<p class="hint">Abonos registrados: {{ item.monto_pagado|moneda }}. Si aumentas el monto, el saldo restante volverá a quedar pendiente.</p>{% endif %}
         <form method="post" class="form" data-debt-form>
           <label>
             Tipo
@@ -73,17 +75,17 @@
 
           <label>
             Monto
-            <input type="number" name="monto" min="0" step="0.01" value="{{ item.monto }}" required>
+            <input type="number" name="monto" min="{{ item.monto_pagado if item.monto_pagado else 0.01 }}" step="0.01" value="{{ item.monto }}" required>
           </label>
 
           <div class="actions">
-            <a class="link-button" href="{{ url_for('deudas') }}">Cancelar</a>
+            <a class="link-button" href="{{ url_for('deudas', historial=1, h_persona=request.args.get('h_persona'), h_tipo=request.args.get('h_tipo'), h_desde=request.args.get('h_desde'), h_hasta=request.args.get('h_hasta'), g_persona=request.args.get('g_persona'), g_desde=request.args.get('g_desde'), g_hasta=request.args.get('g_hasta'), _anchor='historial-deudas') if request.args.get('volver_historial') else url_for('deudas') }}">Cancelar</a>
             <button type="submit">Guardar cambios</button>
           </div>
         </form>
       </section>
     </main>
 
-    <script src="{{ url_for('static', filename='app.js', v='20261107-3') }}"></script>
+    <script src="{{ url_for('static', filename='app.js', v='20261107-5') }}"></script>
   </body>
 </html>

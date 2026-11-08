@@ -2051,10 +2051,10 @@ def clave_periodo(fecha, vista):
 
 def etiqueta_periodo(fecha, vista):
     if vista == "diaria":
-        return fecha.strftime("%d-%m")
+        return fecha.strftime("%d-%m-%y")
     if vista == "semanal":
-        return f"S{fecha.isocalendar().week:02d}"
-    return fecha.strftime("%m")
+        return f"{fecha.isocalendar().year}-S{fecha.isocalendar().week:02d}"
+    return fecha.strftime("%m-%Y")
 
 
 def rango_historico(vista, fechas):
@@ -2094,7 +2094,7 @@ def marcas_eje_y(maximo):
     return [maximo * paso / 4 for paso in range(4, -1, -1)]
 
 
-def construir_periodos(vista, fechas):
+def construir_periodos(vista, fechas, desde=None, hasta=None):
     periodos = {}
     if not fechas:
         return {}
@@ -2120,7 +2120,10 @@ def construir_periodos(vista, fechas):
             },
         )
 
-    inicio, fin = rango_historico(vista, fechas)
+    if desde or hasta:
+        inicio, fin = desde or min(fechas), hasta or max(fechas)
+    else:
+        inicio, fin = rango_historico(vista, fechas)
     if vista == "diaria":
         actual = inicio
         while actual <= fin:
@@ -2143,7 +2146,7 @@ def construir_periodos(vista, fechas):
     return periodos
 
 
-def resumen_historico(vista):
+def resumen_historico(vista, desde=None, hasta=None):
     # Los datos completos comienzan en el Ciclo Agosto 2026, iniciado el
     # penultimo dia habil de julio. Los ciclos Mayo, Junio y Julio se omiten.
     historico_desde = fecha_movimiento(penultimo_dia_habil_mes(date(2026, 7, 1)))
@@ -2187,11 +2190,13 @@ def resumen_historico(vista):
         item
         for item in todos_los_movimientos
         if (fecha := fecha_movimiento(item.get("fecha", ""))) and fecha >= historico_desde
+        and (desde is None or fecha >= desde) and (hasta is None or fecha <= hasta)
     ]
     deudas_lista = [
         item
         for item in todas_las_deudas
         if (fecha := fecha_movimiento(item.get("fecha", ""))) and fecha >= historico_desde
+        and (desde is None or fecha >= desde) and (hasta is None or fecha <= hasta)
     ]
     descuentos_compartidos = descuentos_compras_compartidas(todas_las_deudas)
     subgastos_agrupados = subgastos_por_movimiento()
@@ -2207,8 +2212,9 @@ def resumen_historico(vista):
         if fecha:
             fechas_deudas.append(fecha)
 
-    periodos = construir_periodos(vista, fechas_movimientos)
-    periodos_deudas = construir_periodos(vista, fechas_deudas)
+    fechas_todas = fechas_movimientos + fechas_deudas
+    periodos = construir_periodos(vista, fechas_todas, desde, hasta)
+    periodos_deudas = construir_periodos(vista, fechas_deudas, desde, hasta)
 
     for item in movimientos:
         fecha = fecha_movimiento(item["fecha"])
@@ -2246,6 +2252,9 @@ def resumen_historico(vista):
         elif item["tipo"] == "Debo":
             periodo["debo"] += item["monto"]
             periodo["detalle_debo"].append(item)
+        if clave in periodos:
+            periodos[clave]["me_deben"] = periodo["me_deben"]
+            periodos[clave]["debo"] = periodo["debo"]
 
     filas = [periodos[clave] for clave in sorted(periodos)]
     filas_deudas = [periodos_deudas[clave] for clave in sorted(periodos_deudas)]
@@ -2253,8 +2262,8 @@ def resumen_historico(vista):
         fila["balance"] = fila["ingresos"] - fila["gastos"] - fila["ahorros"]
 
     if filas:
-        inicio_visible, _ = rango_historico(vista, fechas_movimientos)
-        fin_visible = max(fechas_movimientos)
+        inicio_visible = (desde or min(fechas_todas)) if (desde or hasta) else rango_historico(vista, fechas_todas)[0]
+        fin_visible = (hasta or max(fechas_todas)) if (desde or hasta) else max(fechas_todas)
         inicios_previos = [inicio for inicio in inicios_ciclo if inicio <= inicio_visible]
         inicio_calculo = max(inicios_previos) if inicios_previos else inicio_visible
         variacion_por_fecha = {}
@@ -3530,6 +3539,15 @@ def eliminar_automatizacion(automatizacion_id):
     return redirect(url_for("automatizacion"))
 
 
+def filtro_fechas(desde_nombre, hasta_nombre):
+    desde_texto = request.args.get(desde_nombre, "").strip()
+    hasta_texto = request.args.get(hasta_nombre, "").strip()
+    desde = fecha_movimiento(desde_texto) if desde_texto else None
+    hasta = fecha_movimiento(hasta_texto) if hasta_texto else None
+    error = bool((desde_texto and not desde) or (hasta_texto and not hasta) or (desde and hasta and desde > hasta))
+    return desde_texto, hasta_texto, desde, hasta, error
+
+
 @app.route("/deudas", methods=["GET", "POST"])
 def deudas():
     if request.method == "POST":
@@ -3608,6 +3626,36 @@ def deudas():
     debo = [item for item in pendientes if item["tipo"] == "Debo"]
     total_me_deben = sum(item["saldo"] for item in me_deben)
     total_debo = sum(item["saldo"] for item in debo)
+    g_desde, g_hasta, grafico_desde, grafico_hasta, error_grafico = filtro_fechas("g_desde", "g_hasta")
+    h_desde, h_hasta, historial_desde, historial_hasta, error_historial = filtro_fechas("h_desde", "h_hasta")
+    g_persona = request.args.get("g_persona", "").strip()
+    h_persona = request.args.get("h_persona", "").strip()
+    h_tipo = request.args.get("h_tipo", "Todos")
+    if h_tipo not in TIPOS_DEUDA | {"Todos"}:
+        h_tipo = "Todos"
+    personas = sorted({item.get("persona", "").strip() for item in pendientes if item.get("persona", "").strip()}, key=str.casefold)
+    por_persona = {}
+    for item in pendientes:
+        fecha = fecha_movimiento(item.get("fecha") or "")
+        persona = item.get("persona", "").strip() or "Sin persona"
+        if error_grafico or (g_persona and persona.casefold() != g_persona.casefold()):
+            continue
+        if (grafico_desde or grafico_hasta) and (not fecha or (grafico_desde and fecha < grafico_desde) or (grafico_hasta and fecha > grafico_hasta)):
+            continue
+        clave = persona.casefold()
+        fila = por_persona.setdefault(clave, {"persona": persona, "me_deben": 0, "debo": 0})
+        fila["me_deben" if item["tipo"] == "Me deben" else "debo"] += item["saldo"]
+    grafico_personas = sorted(por_persona.values(), key=lambda fila: fila["persona"].casefold())
+    historial_filtrado = []
+    for item in pagadas:
+        fecha = fecha_movimiento(item.get("fecha_pago") or "")
+        if error_historial or (h_persona and h_persona.casefold() not in item.get("persona", "").casefold()):
+            continue
+        if h_tipo != "Todos" and item.get("tipo") != h_tipo:
+            continue
+        if (historial_desde or historial_hasta) and (not fecha or (historial_desde and fecha < historial_desde) or (historial_hasta and fecha > historial_hasta)):
+            continue
+        historial_filtrado.append(item)
     return render_template(
         "deudas.html",
         deudas=deudas_lista,
@@ -3619,6 +3667,11 @@ def deudas():
         total_debo=total_debo,
         balance_deudas=total_me_deben - total_debo,
         gastos_asociables=gastos_asociables(),
+        grafico_personas=grafico_personas, personas=personas,
+        g_persona=g_persona, g_desde=g_desde, g_hasta=g_hasta, error_grafico=error_grafico,
+        historial_filtrado=historial_filtrado, h_persona=h_persona, h_tipo=h_tipo,
+        h_desde=h_desde, h_hasta=h_hasta, error_historial=error_historial,
+        historial_abierto=bool(request.args.get("historial")),
     )
 
 
@@ -3691,6 +3744,39 @@ def editar_deuda(deuda_id):
         else:
             cuotas_total = 1
 
+        try:
+            monto_nuevo = float(request.form.get("monto", 0) or 0)
+        except ValueError:
+            monto_nuevo = -1
+        monto_pagado = float(item.get("monto_pagado") or 0)
+        error = None
+        if not math.isfinite(monto_nuevo) or monto_nuevo <= 0 or monto_nuevo < monto_pagado - 0.009:
+            error = "El monto debe ser positivo y no puede ser menor que los abonos ya registrados."
+        elif monto_pagado > 0 and tipo != item["tipo"]:
+            error = "No se puede cambiar el tipo de una deuda que ya tiene abonos."
+        elif monto_pagado > 0 and es_compra_compartida(item) != (
+            tipo == "Me deben" and categoria.lower() == "compra compartida"
+            and bool(request.form.get("gasto_asociado_id"))
+        ):
+            error = "No se puede cambiar el vínculo de compra compartida después de registrar abonos."
+        elif monto_pagado > 0 and es_compra_compartida(item):
+            try:
+                indice_gasto = int(request.form.get("gasto_asociado_id", ""))
+                movimientos = leer_movimientos()
+                gasto_elegido = movimientos[indice_gasto] if 0 <= indice_gasto < len(movimientos) else {}
+            except ValueError:
+                gasto_elegido = {}
+            if gasto_elegido.get("ticket_movimiento") != item.get("ticket_gasto_asociado"):
+                error = "No se puede cambiar el gasto asociado después de registrar abonos."
+        if error:
+            return render_template("editar_deuda.html", item=item, gastos_asociables=gastos_asociables(), error=error), 400
+
+        ticket = item.get("ticket_deuda", "")
+        tiene_origen = bool(ticket) and any(
+            movimiento.get("ticket_deuda") == ticket and movimiento.get("origen_deuda") == "origen"
+            for movimiento in leer_movimientos()
+        )
+
         item.update(
             {
                 "fecha": request.form.get("fecha", item["fecha"]),
@@ -3698,7 +3784,7 @@ def editar_deuda(deuda_id):
                 "persona": request.form.get("persona", "").strip(),
                 "categoria": categoria,
                 "descripcion": request.form.get("descripcion", "").strip(),
-                "monto": float(request.form.get("monto", 0) or 0),
+                "monto": monto_nuevo,
                 "modalidad": modalidad,
                 "cuotas_total": cuotas_total,
                 "ticket_gasto_asociado": (
@@ -3709,21 +3795,21 @@ def editar_deuda(deuda_id):
                 ),
             }
         )
-        item["monto_pagado"] = min(float(item.get("monto_pagado") or 0), float(item["monto"]))
         item["estado"] = "Pagada" if item["monto_pagado"] >= float(item["monto"]) - 0.009 else "Pendiente"
         if item.get("modalidad") == "Cuotas" and float(item["monto"]) > 0:
             item["cuotas_pagadas"] = min(int(item["monto_pagado"] / monto_cuota(item)), cuotas_total)
         deudas_lista[deuda_id] = item
         escribir_deudas(deudas_lista)
 
-        ticket = item.get("ticket_deuda", "")
-        eliminar_movimientos_deuda(ticket, "origen")
+        actualizar_origen = monto_pagado == 0 or tiene_origen
+        if actualizar_origen:
+            eliminar_movimientos_deuda(ticket, "origen")
         tipo_origen = None
         if tipo == "Me deben" and not es_compra_compartida(item):
             tipo_origen = "Gasto"
         elif tipo == "Debo" and modalidad == "Prestamo":
             tipo_origen = "Ingreso"
-        if tipo_origen:
+        if tipo_origen and actualizar_origen:
             guardar_movimiento(
                 {
                     "fecha": item["fecha"],
@@ -3735,6 +3821,9 @@ def editar_deuda(deuda_id):
                     "origen_deuda": "origen",
                 }
             )
+        if request.args.get("volver_historial"):
+            filtros = {nombre: request.args.get(nombre, "") for nombre in ("h_persona", "h_tipo", "h_desde", "h_hasta", "g_persona", "g_desde", "g_hasta")}
+            return redirect(url_for("deudas", historial=1, _anchor="historial-deudas", **filtros))
         return redirect(url_for("deudas"))
 
     return render_template("editar_deuda.html", item=item, gastos_asociables=gastos_asociables())
@@ -3758,7 +3847,11 @@ def historico():
     filtro_tipo = request.args.get("tipo", "Todos")
     if filtro_tipo not in TIPOS_VALIDOS | {"Todos"}:
         filtro_tipo = "Todos"
-    filas, maximo, eje_y, filas_deudas, maximo_deudas, eje_y_deudas = resumen_historico(vista)
+    desde_texto, hasta_texto, desde, hasta, error_fechas = filtro_fechas("desde", "hasta")
+    if error_fechas:
+        filas, maximo, eje_y, filas_deudas, maximo_deudas, eje_y_deudas = [], 0, [0], [], 0, [0]
+    else:
+        filas, maximo, eje_y, filas_deudas, maximo_deudas, eje_y_deudas = resumen_historico(vista, desde, hasta)
     totales = {
         "ingresos": sum(fila["ingresos"] for fila in filas),
         "gastos": sum(fila["gastos"] for fila in filas),
@@ -3795,6 +3888,7 @@ def historico():
         "historico.html",
         vista=vista,
         filtro_tipo=filtro_tipo,
+        desde=desde_texto, hasta=hasta_texto, error_fechas=error_fechas,
         filas=filas,
         datasets_movimientos=datasets_movimientos,
         maximo=maximo,
