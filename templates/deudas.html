@@ -194,6 +194,6 @@
 
     <script id="deudas-persona-data" type="application/json">{{ {"labels": grafico_personas|map(attribute="persona")|list, "me_deben": grafico_personas|map(attribute="me_deben")|list, "debo": grafico_personas|map(attribute="debo")|list}|tojson }}</script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
-    <script src="{{ url_for('static', filename='app.js', v='20261107-9') }}"></script>
+    <script src="{{ url_for('static', filename='app.js', v='20261107-10') }}"></script>
   </body>
 </html>

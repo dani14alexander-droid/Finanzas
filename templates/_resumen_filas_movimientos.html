@@ -1,0 +1,22 @@
+{% for item in movimientos_filtrados %}
+  <tr>
+    <td>{{ item.fecha|fecha_corta }}</td>
+    <td>{{ item.tipo }}</td>
+    <td>{{ item.categoria or "Sin categoria" }}</td>
+    <td>{{ item.descripcion or "Sin descripcion" }}</td>
+    <td class="{{ 'positive' if item.tipo in ['Ingreso', 'Restitución'] else 'saving' if item.tipo == 'Ahorro' else 'negative' }}">
+      {{ item.monto|moneda }}{% if item.es_compra_compartida %}<span class="shared-purchase-mark" title="Compra compartida">**</span>{% endif %}
+    </td>
+    <td>
+      {% if item.tipo in ['Cuenta por cobrar', 'Restitución'] and item.deuda_id is not none %}
+        <a class="table-action" href="{{ url_for('editar_deuda', deuda_id=item.deuda_id) }}">Ver deuda</a>
+      {% elif item.tipo in ['Cuenta por cobrar', 'Restitución'] %}
+        <span class="hint-inline">Movimiento de deuda</span>
+      {% elif item.id != "" %}
+        <a class="table-action" href="{{ url_for('editar', movimiento_id=item.id, volver_ciclo=ciclo_seleccionado, volver_q=busqueda, volver_tipo=filtro_tipo) }}">Editar</a>
+      {% else %}<span class="hint-inline">Automatico</span>{% endif %}
+    </td>
+  </tr>
+{% else %}
+  <tr><td colspan="6" class="empty">{{ mensaje_sin_movimientos }}</td></tr>
+{% endfor %}

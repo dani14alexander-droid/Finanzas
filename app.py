@@ -1,6 +1,8 @@
 from pathlib import Path
 from bisect import bisect_right
+from copy import deepcopy
 from datetime import date, datetime, timedelta
+from functools import lru_cache, wraps
 from zoneinfo import ZoneInfo
 from io import BytesIO
 from math import ceil
@@ -19,10 +21,35 @@ except ImportError:
     psycopg = None
     dict_row = None
 
-from flask import Flask, Response, redirect, render_template, request, send_file, url_for
+from flask import Flask, Response, g, has_request_context, redirect, render_template, request, send_file, url_for
 
 
 app = Flask(__name__)
+
+
+def cache_lectura(func):
+    """Reutiliza lecturas en una solicitud, sin compartir datos entre usuarios."""
+    @wraps(func)
+    def leer(*args, **kwargs):
+        if not has_request_context():
+            return func(*args, **kwargs)
+        cache = g.setdefault("cache_lecturas", {})
+        clave = (func.__name__, args, tuple(sorted(kwargs.items())))
+        if clave not in cache:
+            cache[clave] = func(*args, **kwargs)
+        return deepcopy(cache[clave])
+    return leer
+
+
+def invalida_lecturas(func):
+    @wraps(func)
+    def escribir(*args, **kwargs):
+        try:
+            return func(*args, **kwargs)
+        finally:
+            if has_request_context():
+                g.pop("cache_lecturas", None)
+    return escribir
 
 ZONA_HORARIA_CHILE = ZoneInfo("America/Santiago")
 
@@ -354,6 +381,8 @@ def asegurar_columnas_csv(path, columnas):
 
 
 def asegurar_csv():
+    if has_request_context() and g.get("csv_inicializado"):
+        return
     DATA_DIR.mkdir(exist_ok=True)
     if not CSV_PATH.exists():
         with CSV_PATH.open("w", newline="", encoding="utf-8") as archivo:
@@ -433,8 +462,11 @@ def asegurar_csv():
     asegurar_columnas_csv(CSV_PATH, COLUMNAS)
     asegurar_columnas_csv(DEUDAS_PATH, DEUDA_COLUMNAS)
     asegurar_columnas_csv(AUTOMATIZACIONES_PATH, AUTOMATIZACION_COLUMNAS)
+    if has_request_context():
+        g.csv_inicializado = True
 
 
+@cache_lectura
 def leer_movimientos():
     if usar_base_datos():
         asegurar_db()
@@ -500,6 +532,7 @@ def saldo_cuentas_por_cobrar(deudas):
     )
 
 
+@invalida_lecturas
 def escribir_movimientos(movimientos):
     if usar_base_datos():
         asegurar_db()
@@ -536,6 +569,7 @@ def escribir_movimientos(movimientos):
             writer.writerow({columna: movimiento.get(columna, "") for columna in COLUMNAS})
 
 
+@invalida_lecturas
 def guardar_movimiento(movimiento):
     movimiento.setdefault("ticket_movimiento", uuid.uuid4().hex)
     if usar_base_datos():
@@ -568,6 +602,7 @@ def guardar_movimiento(movimiento):
     return movimiento["ticket_movimiento"]
 
 
+@cache_lectura
 def leer_subgastos_efectivo(ticket_movimiento=None):
     if usar_base_datos():
         asegurar_db()
@@ -597,6 +632,7 @@ def leer_subgastos_efectivo(ticket_movimiento=None):
         return items
 
 
+@invalida_lecturas
 def escribir_subgastos_movimiento(ticket_movimiento, subgastos):
     subgastos = [
         {
@@ -657,6 +693,7 @@ def subgastos_desde_formulario(fecha_predeterminada=""):
     return items
 
 
+@cache_lectura
 def leer_automatizaciones():
     if usar_base_datos():
         asegurar_db()
@@ -708,6 +745,7 @@ def leer_automatizaciones():
     return automatizaciones
 
 
+@invalida_lecturas
 def escribir_automatizaciones(automatizaciones):
     if usar_base_datos():
         asegurar_db()
@@ -754,6 +792,7 @@ def escribir_automatizaciones(automatizaciones):
             writer.writerow(fila)
 
 
+@cache_lectura
 def leer_deudas():
     if usar_base_datos():
         asegurar_db()
@@ -817,6 +856,7 @@ def leer_deudas():
     return deudas
 
 
+@cache_lectura
 def leer_categorias():
     if usar_base_datos():
         asegurar_db()
@@ -829,6 +869,7 @@ def leer_categorias():
         return [dict(fila) for fila in csv.DictReader(archivo)]
 
 
+@invalida_lecturas
 def escribir_categorias(categorias):
     unicas = {}
     for item in categorias:
@@ -907,6 +948,7 @@ def inyectar_categorias():
         "categorias_existentes": categorias_existentes(),
         "lista_categoria_para_tipo": lista_categoria_para_tipo,
     }
+@invalida_lecturas
 def escribir_deudas(deudas):
     if usar_base_datos():
         asegurar_db()
@@ -951,6 +993,7 @@ def escribir_deudas(deudas):
             writer.writerow({columna: item.get(columna, "") for columna in DEUDA_COLUMNAS})
 
 
+@cache_lectura
 def leer_planificaciones():
     if usar_base_datos():
         asegurar_db()
@@ -982,6 +1025,7 @@ def leer_planificaciones():
     return planificaciones
 
 
+@invalida_lecturas
 def escribir_planificaciones(planificaciones):
     if usar_base_datos():
         asegurar_db()
@@ -1014,6 +1058,7 @@ def escribir_planificaciones(planificaciones):
             writer.writerow({columna: item.get(columna, "") for columna in PLANIFICACION_COLUMNAS})
 
 
+@invalida_lecturas
 def guardar_planificacion(item):
     if usar_base_datos():
         asegurar_db()
@@ -1040,6 +1085,7 @@ def guardar_planificacion(item):
         writer.writerow(item)
 
 
+@cache_lectura
 def leer_metas():
     if usar_base_datos():
         asegurar_db()
@@ -1060,6 +1106,7 @@ def leer_metas():
     ]
 
 
+@invalida_lecturas
 def escribir_metas(metas):
     if usar_base_datos():
         asegurar_db()
@@ -1078,6 +1125,7 @@ def escribir_metas(metas):
         writer.writerows(metas)
 
 
+@cache_lectura
 def leer_macro_categorias():
     if usar_base_datos():
         asegurar_db()
@@ -1090,6 +1138,7 @@ def leer_macro_categorias():
         return [dict(fila) for fila in csv.DictReader(archivo)]
 
 
+@invalida_lecturas
 def escribir_macro_categorias(asignaciones):
     if usar_base_datos():
         asegurar_db()
@@ -1779,6 +1828,7 @@ def rango_dashboard(hoy=None, movimientos=None):
     return inicio, fin
 
 
+@lru_cache(maxsize=4096)
 def fecha_movimiento(valor):
     try:
         return datetime.strptime(valor, "%Y-%m-%d").date()
@@ -3952,6 +4002,55 @@ def historico():
     )
 
 
+def filtrar_movimientos_resumen(movimientos, busqueda, filtro_tipo):
+    if filtro_tipo in TIPOS_VALIDOS | {"Cuenta por cobrar", "Restitución"}:
+        movimientos = [item for item in movimientos if item["tipo"] == filtro_tipo]
+    if busqueda:
+        texto = busqueda.casefold()
+        movimientos = [item for item in movimientos if texto in " ".join([
+            item.get("fecha", ""), fecha_corta(item.get("fecha", "")),
+            item.get("tipo", ""), item.get("categoria", ""),
+            item.get("descripcion", ""), str(item.get("monto", "")),
+        ]).casefold()]
+    return movimientos
+
+
+def preparar_filas_resumen(movimientos, deudas):
+    compartidas = deudas_compartidas_por_gasto(deudas)
+    por_ticket = {item.get("ticket_deuda"): item["id"] for item in deudas if item.get("ticket_deuda")}
+    return [{
+        **item,
+        "deuda_id": por_ticket.get(item.get("ticket_deuda")),
+        "es_compra_compartida": bool(compartidas.get(item.get("ticket_movimiento", ""))),
+    } for item in movimientos]
+
+
+@app.route("/resumen/movimientos-fecha")
+def movimientos_resumen_fecha():
+    fecha_texto = request.args.get("fecha", "").strip()
+    movimientos = leer_movimientos()
+    ciclo = request.args.get("ciclo", "").strip()
+    busqueda = request.args.get("q", "").strip()
+    tipo = request.args.get("tipo", "Todos")
+    if fecha_texto:
+        if not fecha_movimiento(fecha_texto):
+            return Response("Fecha inválida.", status=400)
+        seleccion = [item for item in movimientos if item.get("fecha") == fecha_texto]
+        mensaje = "No hay movimientos registrados en esta fecha."
+    else:
+        ciclos = opciones_ciclos(movimientos)
+        if ciclo not in {item["valor"] for item in ciclos}:
+            ciclo = ciclos[0]["valor"] if ciclos else clave_ciclo(fecha_hoy_chile(), movimientos)
+        seleccion = filtrar_movimientos_resumen(movimientos_de_ciclo(movimientos, ciclo)[0], busqueda, tipo)
+        mensaje = "No hay movimientos que coincidan con la búsqueda."
+    filas = preparar_filas_resumen(seleccion, leer_deudas())
+    html = app.jinja_env.get_template("_resumen_filas_movimientos.html").render(
+        movimientos_filtrados=filas, ciclo_seleccionado=ciclo, busqueda=busqueda,
+        filtro_tipo=tipo, mensaje_sin_movimientos=mensaje,
+    )
+    return Response(html, mimetype="text/html", headers={"X-Movimientos-Count": str(len(filas)), "Cache-Control": "no-store"})
+
+
 @app.route("/resumen")
 def resumen():
     todos_movimientos = leer_movimientos()
@@ -3980,6 +4079,8 @@ def resumen():
     filtro_tipo = request.args.get("tipo", "Todos")
     agregar_rapido = request.args.get("agregar") == "1"
     fecha_agregar = request.args.get("agregar_fecha", "").strip() or fecha_hoy_chile().isoformat()
+    if not fecha_movimiento(fecha_agregar):
+        fecha_agregar = fecha_hoy_chile().isoformat()
     semanas, _, _ = calcular_semanas_restantes(fecha_hoy_chile(), periodo_fin)
     deudas_actuales = leer_deudas()
     descuentos_compartidos = descuentos_compras_compartidas(deudas_actuales)
@@ -4073,7 +4174,6 @@ def resumen():
         distribucion_ingresos
     )
 
-    deudas_compartidas = deudas_compartidas_por_gasto(deudas_actuales)
     gastos_variables = datos_gastos_variables(
         {
             "periodo_inicio": periodo_inicio,
@@ -4083,39 +4183,11 @@ def resumen():
         },
         request.args.get("gastos_vista", "diaria"),
     )
-    movimientos_filtrados = movimientos
-    if filtro_tipo in TIPOS_VALIDOS | {"Cuenta por cobrar", "Restitución"}:
-        movimientos_filtrados = [
-            item for item in movimientos_filtrados if item["tipo"] == filtro_tipo
-        ]
-    if busqueda:
-        texto = busqueda.lower()
-        movimientos_filtrados = [
-            item
-            for item in movimientos_filtrados
-            if texto
-            in " ".join(
-                [
-                    item.get("fecha", ""),
-                    item.get("tipo", ""),
-                    item.get("categoria", ""),
-                    item.get("descripcion", ""),
-                    str(item.get("monto", "")),
-                ]
-            ).lower()
-        ]
-
-    deudas_por_ticket = {item.get("ticket_deuda"): item["id"] for item in deudas_actuales if item.get("ticket_deuda")}
-    movimientos_filtrados = [
-        {
-            **item,
-            "deuda_id": deudas_por_ticket.get(item.get("ticket_deuda")),
-            "es_compra_compartida": bool(
-                deudas_compartidas.get(item.get("ticket_movimiento", ""))
-            ),
-        }
-        for item in movimientos_filtrados
-    ]
+    if agregar_rapido:
+        seleccion = [item for item in todos_movimientos if item.get("fecha") == fecha_agregar]
+    else:
+        seleccion = filtrar_movimientos_resumen(movimientos, busqueda, filtro_tipo)
+    movimientos_filtrados = preparar_filas_resumen(seleccion, deudas_actuales)
 
     return render_template(
         "resumen.html",
@@ -4142,6 +4214,7 @@ def resumen():
         total_distribucion_ingresos=total_distribucion_ingresos,
         movimientos=movimientos,
         movimientos_filtrados=movimientos_filtrados,
+        mensaje_sin_movimientos=("No hay movimientos registrados en esta fecha." if agregar_rapido else "No hay movimientos que coincidan con la búsqueda."),
         busqueda=busqueda,
         filtro_tipo=filtro_tipo,
         agregar_rapido=agregar_rapido,

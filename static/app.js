@@ -80,6 +80,9 @@ const initializeDateFields = (root = document) => {
     };
     dateInput.addEventListener("input", syncFromCalendar);
     dateInput.addEventListener("change", syncFromCalendar);
+    textInput.addEventListener("change", () => {
+      if (textInput.validity.valid) dateInput.dispatchEvent(new Event("change", { bubbles: true }));
+    });
     dateInput.addEventListener("click", () => {
       if (typeof dateInput.showPicker === "function") {
         try { dateInput.showPicker(); } catch { /* El navegador puede abrirlo por sí mismo. */ }
@@ -184,21 +187,88 @@ document.querySelectorAll(".auto-filter").forEach((form) => {
 });
 
 document.querySelectorAll(".add-row-button").forEach((button) => {
-  button.addEventListener("click", () => {
-    const wrap = button.closest(".movement-table-wrap");
-    const row = wrap?.querySelector(".inline-add-row");
-    if (!row) {
-      return;
-    }
+  const wrap = button.closest(".movement-table-wrap");
+  const row = wrap?.querySelector(".inline-add-row");
+  const rows = wrap?.querySelector("[data-movement-rows]");
+  const dateInput = row?.querySelector('input[type="date"][name="fecha"]');
+  const status = wrap?.closest("#movimientos")?.querySelector(".date-movements-status");
+  let originalRows = row?.hidden ? rows?.innerHTML : null;
+  let sequence = 0;
 
+  const loadRows = async (fecha) => {
+    if (!wrap || !rows) return;
+    const requestId = ++sequence;
+    const url = new URL(wrap.dataset.dateMovementsUrl, window.location.origin);
+    url.searchParams.set("ciclo", wrap.dataset.ciclo || "");
+    url.searchParams.set("q", wrap.dataset.busqueda || "");
+    url.searchParams.set("tipo", wrap.dataset.tipo || "Todos");
+    if (fecha) url.searchParams.set("fecha", fecha);
+    rows.setAttribute("aria-busy", "true");
+    if (status && fecha) {
+      status.hidden = false;
+      status.textContent = `Buscando movimientos del ${displayDate(fecha)}…`;
+    }
+    try {
+      const response = await fetch(url);
+      if (!response.ok) throw new Error("No se pudieron cargar los movimientos");
+      const html = await response.text();
+      if (requestId !== sequence) return;
+      rows.innerHTML = html;
+      if (status && fecha) status.textContent = `Mostrando todos los movimientos del ${displayDate(fecha)}, sin aplicar búsqueda ni tipo.`;
+      if (status && !fecha) status.hidden = true;
+    } catch (error) {
+      if (requestId === sequence && status) {
+        status.hidden = false;
+        status.textContent = "No se pudieron actualizar los movimientos. Inténtalo de nuevo.";
+      }
+    } finally {
+      if (requestId === sequence) rows.removeAttribute("aria-busy");
+    }
+  };
+
+  const saveDateInUrl = (fecha) => {
+    const url = new URL(window.location.href);
+    if (fecha) {
+      url.searchParams.set("agregar", "1");
+      url.searchParams.set("agregar_fecha", fecha);
+    } else {
+      url.searchParams.delete("agregar");
+      url.searchParams.delete("agregar_fecha");
+    }
+    url.hash = "movimientos";
+    window.history.replaceState(null, "", url);
+  };
+
+  button.addEventListener("click", () => {
+    if (!row || !rows) return;
     row.hidden = !row.hidden;
+    button.textContent = row.hidden ? "+" : "−";
+    button.setAttribute("aria-expanded", String(!row.hidden));
+    button.setAttribute("aria-label", row.hidden ? "Agregar movimiento" : "Cerrar agregar movimiento");
     if (!row.hidden) {
+      if (originalRows === null) originalRows = rows.innerHTML;
+      if (dateInput?.value) {
+        saveDateInUrl(dateInput.value);
+        loadRows(dateInput.value);
+      }
       row.querySelector("input, select")?.focus();
+    } else {
+      sequence++;
+      rows.removeAttribute("aria-busy");
+      saveDateInUrl("");
+      if (status) status.hidden = true;
+      if (originalRows !== null) rows.innerHTML = originalRows;
+      else loadRows("");
     }
   });
-  const openRow = button.closest(".movement-table-wrap")?.querySelector(".inline-add-row");
-  if (openRow && !openRow.hidden) {
-    openRow.querySelector('[name="categoria"]')?.focus();
+  dateInput?.addEventListener("change", () => {
+    if (!row?.hidden && dateInput.value) {
+      saveDateInUrl(dateInput.value);
+      loadRows(dateInput.value);
+    }
+  });
+  if (row && !row.hidden) {
+    row.querySelector('[name="categoria"]')?.focus();
   }
 });
 

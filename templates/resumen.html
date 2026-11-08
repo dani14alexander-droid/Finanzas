@@ -249,9 +249,9 @@
           </label>
         </form>
 
-        {% if movimientos_filtrados %}
-          <div class="table-wrap movement-table-wrap">
-            <button class="add-row-button" type="button" aria-label="Agregar movimiento">+</button>
+        <p class="date-movements-status hint-inline" aria-live="polite" {{ '' if agregar_rapido else 'hidden' }}>{% if agregar_rapido %}Mostrando todos los movimientos del {{ fecha_agregar|fecha_corta }}, sin aplicar búsqueda ni tipo.{% endif %}</p>
+          <div class="table-wrap movement-table-wrap" data-date-movements-url="{{ url_for('movimientos_resumen_fecha') }}" data-ciclo="{{ ciclo_seleccionado }}" data-busqueda="{{ busqueda }}" data-tipo="{{ filtro_tipo }}">
+            <button class="add-row-button" type="button" aria-label="{{ 'Cerrar agregar movimiento' if agregar_rapido else 'Agregar movimiento' }}" aria-expanded="{{ 'true' if agregar_rapido else 'false' }}">{{ '−' if agregar_rapido else '+' }}</button>
             <form id="quick-add-movement" method="post" action="{{ url_for('agregar_desde_resumen') }}">
               <input type="hidden" name="volver_ciclo" value="{{ ciclo_seleccionado }}">
               <input type="hidden" name="volver_q" value="{{ busqueda }}">
@@ -283,34 +283,10 @@
                     <td><input form="quick-add-movement" type="number" name="monto" min="0" step="0.01" placeholder="0" required></td>
                     <td><button form="quick-add-movement" type="submit">Agregar</button></td>
                 </tr>
-                {% for item in movimientos_filtrados %}
-                  <tr>
-                    <td>{{ item.fecha|fecha_corta }}</td>
-                    <td>{{ item.tipo }}</td>
-                    <td>{{ item.categoria or "Sin categoria" }}</td>
-                    <td>{{ item.descripcion or "Sin descripcion" }}</td>
-                    <td class="{{ 'positive' if item.tipo in ['Ingreso', 'Restitución'] else 'saving' if item.tipo == 'Ahorro' else 'negative' }}">
-                      {{ item.monto|moneda }}{% if item.es_compra_compartida %}<span class="shared-purchase-mark" title="Compra compartida">**</span>{% endif %}
-                    </td>
-                    <td>
-                      {% if item.tipo in ['Cuenta por cobrar', 'Restitución'] and item.deuda_id is not none %}
-                        <a class="table-action" href="{{ url_for('editar_deuda', deuda_id=item.deuda_id) }}">Ver deuda</a>
-                      {% elif item.tipo in ['Cuenta por cobrar', 'Restitución'] %}
-                        <span class="hint-inline">Movimiento de deuda</span>
-                      {% elif item.id != "" %}
-                        <a class="table-action" href="{{ url_for('editar', movimiento_id=item.id, volver_ciclo=ciclo_seleccionado, volver_q=busqueda, volver_tipo=filtro_tipo) }}">Editar</a>
-                      {% else %}
-                        <span class="hint-inline">Automatico</span>
-                      {% endif %}
-                    </td>
-                  </tr>
-                {% endfor %}
               </tbody>
+              <tbody data-movement-rows>{% include "_resumen_filas_movimientos.html" %}</tbody>
             </table>
           </div>
-        {% else %}
-          <p class="empty">No hay movimientos que coincidan con la busqueda.</p>
-        {% endif %}
       </section>
     </main>
 
@@ -341,6 +317,6 @@
     {% include "_categorias_datalist.html" %}
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.2.0"></script>
-    <script src="{{ url_for('static', filename='app.js', v='20261107-9') }}"></script>
+    <script src="{{ url_for('static', filename='app.js', v='20261107-10') }}"></script>
   </body>
 </html>
