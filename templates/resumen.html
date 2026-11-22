@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Resumen</title>
     <link rel="manifest" href="{{ url_for('static', filename='manifest.json') }}">
-    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css', v='20261108-11') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css', v='20261122-2') }}">
   </head>
   <body>
     {% include "_navigation.html" %}
@@ -127,9 +127,17 @@
                 <ul>
                   {% for item in gastos_por_categoria %}
                     <li>
-                      <i style="background: {{ item.color }};"></i>
-                      <span>{{ item.categoria or "Sin categoria" }}</span>
-                      <small>{{ "%.1f"|format(item.porcentaje) }}%</small>
+                      {% if item.categoria == "Otros" %}
+                        <button type="button" class="chart-legend-trigger" data-other-breakdown-trigger aria-expanded="false" aria-controls="gastos-otros-detalle">
+                          <i style="background: {{ item.color }};"></i>
+                          <span>{{ item.categoria }}</span>
+                          <small>{{ "%.1f"|format(item.porcentaje) }}%</small>
+                        </button>
+                      {% else %}
+                        <i style="background: {{ item.color }};"></i>
+                        <span>{{ item.categoria or "Sin categoria" }}</span>
+                        <small>{{ "%.1f"|format(item.porcentaje) }}%</small>
+                      {% endif %}
                     </li>
                   {% endfor %}
                 </ul>
@@ -137,6 +145,13 @@
                 <p class="empty">Agrega gastos para ver el grafico.</p>
               {% endif %}
             </div>
+            {% if otros_gastos %}
+              <div id="gastos-otros-detalle" class="category-breakdown" hidden>
+                <h3>Detalle de Otros</h3>
+                <ul data-other-breakdown-list></ul>
+                <p>Total: <strong data-other-breakdown-total></strong></p>
+              </div>
+            {% endif %}
           </article>
 
           <article class="chart-section">
@@ -304,7 +319,8 @@
       {{ {
         "labels": gastos_por_categoria|map(attribute="categoria")|list,
         "values": gastos_por_categoria|map(attribute="monto")|list,
-        "colors": gastos_por_categoria|map(attribute="color")|list
+        "colors": gastos_por_categoria|map(attribute="color")|list,
+        "others": otros_gastos
       }|tojson }}
     </script>
     <script id="ingresos-chart-data" type="application/json">
@@ -317,6 +333,6 @@
     {% include "_categorias_datalist.html" %}
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.2.0"></script>
-    <script src="{{ url_for('static', filename='app.js', v='20261108-14') }}"></script>
+    <script src="{{ url_for('static', filename='app.js', v='20261122-2') }}"></script>
   </body>
 </html>

@@ -4574,6 +4574,10 @@ def resumen():
     ]
     gastos_por_categoria = gastos_por_categoria_base[:7]
     otros_gastos = gastos_por_categoria_base[7:]
+    otros_gastos_detalle = [
+        {"categoria": item["categoria"], "monto": item["monto"]}
+        for item in otros_gastos
+    ]
     if otros_gastos:
         gastos_por_categoria.append(
             {
@@ -4638,6 +4642,7 @@ def resumen():
         ciclo_tiene_informacion=ciclo_tiene_informacion,
         por_categoria=por_categoria,
         gastos_por_categoria=gastos_por_categoria,
+        otros_gastos=otros_gastos_detalle,
         torta_gastos=torta_gastos,
         total_gastos_categoria=total_gastos_categoria,
         distribucion_ingresos=distribucion_ingresos,

@@ -641,6 +641,35 @@ const buildDoughnut = (canvasId, dataId) => {
 buildDoughnut("gastosChart", "gastos-chart-data");
 buildDoughnut("ingresosChart", "ingresos-chart-data");
 
+const otherBreakdown = readChartData("gastos-chart-data")?.others || [];
+document.querySelectorAll("[data-other-breakdown-trigger]").forEach((trigger) => {
+  const panel = document.getElementById(trigger.getAttribute("aria-controls"));
+  const list = panel?.querySelector("[data-other-breakdown-list]");
+  const total = panel?.querySelector("[data-other-breakdown-total]");
+  if (!panel || !list || !total) {
+    return;
+  }
+
+  otherBreakdown.forEach((item) => {
+    const row = document.createElement("li");
+    const category = document.createElement("span");
+    const amount = document.createElement("strong");
+    category.textContent = item.categoria || "Sin categoría";
+    amount.textContent = moneyFormatter.format(Number(item.monto || 0));
+    row.append(category, amount);
+    list.append(row);
+  });
+  total.textContent = moneyFormatter.format(
+    otherBreakdown.reduce((sum, item) => sum + Number(item.monto || 0), 0),
+  );
+
+  trigger.addEventListener("click", () => {
+    const isOpen = trigger.getAttribute("aria-expanded") === "true";
+    trigger.setAttribute("aria-expanded", String(!isOpen));
+    panel.hidden = isOpen;
+  });
+});
+
 const renderDetailPanel = (panel, data) => {
   const rows = data.items.length
     ? data.items

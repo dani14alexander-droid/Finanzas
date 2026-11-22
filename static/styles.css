@@ -508,6 +508,58 @@ th {
   padding: 0;
 }
 
+.chart-legend-trigger {
+  align-items: center;
+  background: transparent;
+  border: 0;
+  color: inherit;
+  cursor: pointer;
+  display: inline-grid;
+  font: inherit;
+  gap: 6px;
+  grid-template-columns: 9px auto auto;
+  padding: 0;
+}
+
+.chart-legend-trigger:hover span,
+.chart-legend-trigger:focus-visible span {
+  text-decoration: underline;
+}
+
+.category-breakdown {
+  background: #f8fbff;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  margin-top: 14px;
+  padding: 12px 14px;
+}
+
+.category-breakdown h3 {
+  font-size: 0.95rem;
+  margin: 0 0 8px;
+}
+
+.category-breakdown ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.category-breakdown li,
+.category-breakdown p {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 0;
+  padding: 4px 0;
+}
+
+.category-breakdown p {
+  border-top: 1px solid var(--line);
+  margin-top: 6px;
+  padding-top: 8px;
+}
+
 .chart-legend i {
   border-radius: 999px;
   height: 9px;
