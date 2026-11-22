@@ -667,6 +667,14 @@ document.querySelectorAll("[data-other-breakdown-trigger]").forEach((trigger) =>
     const isOpen = trigger.getAttribute("aria-expanded") === "true";
     trigger.setAttribute("aria-expanded", String(!isOpen));
     panel.hidden = isOpen;
+    panel.closest(".charts-grid")?.classList.toggle("has-category-breakdown", !isOpen);
+  });
+
+  panel.querySelector("[data-other-breakdown-close]")?.addEventListener("click", () => {
+    panel.hidden = true;
+    trigger.setAttribute("aria-expanded", "false");
+    panel.closest(".charts-grid")?.classList.remove("has-category-breakdown");
+    trigger.focus();
   });
 });
 
